@@ -1,0 +1,19 @@
+{
+  "passed": false,
+  "filter": "Diagnostic",
+  "groups": 2,
+  "failed": 2,
+  "results": [
+    {
+      "name": "Diagnostic write failure cannot replace a desync error or skip its abort",
+      "passed": false,
+      "error": "System.Exception: diagnostic error replaced the desync reason"
+    },
+    {
+      "name": "Diagnostic tail write failure cannot replace requested cancellation",
+      "passed": false,
+      "error": "System.IO.DirectoryNotFoundException: Could not find a part of the path 'C:\\Users\\[user]\\AppData\\Local\\Temp\\TH12Coop-managed-audit-0067edd7f7c6486ca550839f34432d31\\game\\missing-diagnostic-directory\\digest-tail.json'."
+    }
+  ],
+  "scope": "Synthetic temporary files, real mapped IPC, and actual loopback TLS with production connect/authentication/send/receive deadlines; no original game assets, native DLL loading, or game processes."
+}

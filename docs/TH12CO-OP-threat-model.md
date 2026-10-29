@@ -4,7 +4,7 @@
 
 ## Executive summary
 
-非公開招待の2人協力プレイを対象に、接続相手から任意のコード・パス・プロセスを指定させない境界を確認した。通信はTLS 1.3、証明書pin、256-bit参加鍵、固定レコードと入力範囲の検証で保護する。通信版は3、協力ルール版は2、ローカルIPC構造体版は1、招待形式はT12L3。通常版1.00a・通常版1.00b・Steam版1.00bを既知hashで識別し、1.00b同士の通常版/Steam版の混在は既知プロファイルと資産の検証後に許可する。オフラインもオンラインも停止状態から起動し、パッチ設置の失敗時はゲーム進行を再開せず所有プロセスを終了する。残る主なリスクは、公開した待受ポートへの可用性攻撃、招待の漏洩、未署名のローカル配布物への信頼、および部分的な状態digestによる同期不良の検出限界。確定した試験結果と未検証範囲は検証結果を正とし、全状態・全ステージの一致を保証しない。
+非公開招待の2人協力プレイを対象に、接続相手から任意のコード・パス・プロセスを指定させない境界を確認した。通信はTLS 1.3、証明書pin、256-bit参加鍵、固定レコードと入力範囲の検証で保護する。通信版は3、協力ルール版は3、ローカルIPC構造体版は1、招待形式はT12L3。通常版1.00a・通常版1.00b・Steam版1.00bを既知hashで識別し、1.00b同士の通常版/Steam版の混在は既知プロファイルと資産の検証後に許可する。オフラインもオンラインも停止状態から起動し、パッチ設置の失敗時はゲーム進行を再開せず所有プロセスを終了する。残る主なリスクは、公開した待受ポートへの可用性攻撃、招待の漏洩、未署名のローカル配布物への信頼、および部分的な状態digestによる同期不良の検出限界。確定した試験結果と未検証範囲は検証結果を正とし、全状態・全ステージの一致を保証しない。
 
 ## Scope and assumptions
 
@@ -27,7 +27,7 @@
 
 - 利用者 → ランチャー: ローカルUI/CLIでゲーム位置、ホストIP、ポート、招待を指定。通信相手はこれらのローカル引数を書き換えられない。根拠: LauncherForm.StartSession、Program.Main。
 - ネットワーク/相手PC → SecureChannel: TCP/TLS1.3。招待の証明書SHA-256 pinと参加鍵を検証。認証8件/4秒、アプリ本文4KiB上限。根拠: Protocol.cs/Connect/Accept/Receive、OnlineSession.AcceptGuest。
-- 認証済みpeer → LockstepPeer → native IPC: role、session、連続frame、許可bitを検証し、120件窓、頻度上限を適用。OnlineProfile.ValidateRulesとnative lockstep.Initializeはルール版2以外を拒否し、MOD DLL hashも一致を要求する。固定サイズmappingへ要求中の1フレームだけをcommitする。根拠: OnlineProfile、NetBridge.Commit、lockstep.h/Initialize/Poll。
+- 認証済みpeer → LockstepPeer → native IPC: role、session、連続frame、許可bitを検証し、120件窓、頻度上限を適用。OnlineProfile.ValidateRulesとnative lockstep.Initializeはルール版3以外を拒否し、MOD DLL hashも一致を要求する。固定サイズmappingへ要求中の1フレームだけをcommitする。根拠: OnlineProfile、NetBridge.Commit、lockstep.h/Initialize/Poll。
 - ローカル配布物/ゲーム → ローダー/ゲームプロセス: EXEの既知SHA-256、PE layout、フック命令を照合。DLLはローカル絶対パス。相手のbuild IDとEXE/DAT/BGMの組合せも既知リストへ照合してから互換性を判定し、1.00bの通常版/Steam版間でもDAT/BGM/native/config/依存関係digestの一致を要求する。peer間ハッシュ一致は配布元の真正性とは別。根拠: GameBuild、OnlineProfile.Read/ValidateAssets、GameSession.StartCore、injector.cpp/isKnownGame、game_layout.h/SelectLayout、th12coop.cpp/installHooks。
 - ローカル起動 → 停止中のゲーム: 全モードでCREATE_SUSPENDEDを使い、注入前にKILL_ON_JOB_CLOSEを持つ無名Jobへ所有ゲームだけを登録する。SILENT_BREAKAWAY_OKでSteam補助プロセス等の自動所属を避け、登録失敗なら再開しない。16バイトのBoot mappingにmagic、版1、CreateProcess由来thread ID、early flagを渡す。coop_bootは値とthreadのプロセス所属を確認する。通常版は既知entryで停止した状態で設置する。ネットワーク診断だけは既存Net IPC offset92からのearly起動互換経路も持つ。起動metadataは同権限プロセスへの秘密・認証境界ではない。根拠: OwnedGameJob.AssignSuspended、GameSession.StartCore、coop_boot.h、injector.cpp/initializeLoader。
 - 正常なSteam startup → native game hook: status5で一時的なclock import待受を公開し、既知seed戻り先とcoop_bootが確認したprimary thread IDが一致した場合だけ設置へ進む。元のimportを復元し、全game hookの命令照合後にready/device-readyへ進む。相手はseedの数値以外のコード位置やthreadを指定できない。設置途中の保護変更失敗では命令の復元を試みるが、OS失敗時の完全な巻戻しは保証せず、停止を維持してランチャーが所有ゲームを終了する。根拠: th12coop.cpp/armSteamBootstrap/bootstrapClock/installHooks/bootstrapFailed、patch.h、GameSession.StartCore。
@@ -76,7 +76,7 @@ flowchart LR
 | TCP待受・TLS | 指定ポート、標準3012 | ネットワーク→ランチャー | 一度に8認証、4秒期限 | src/launcher/OnlineSession.cs/AcceptGuest |
 | 招待・認証hello | ローカル貼付け/TLS内 | 利用者/peer→認証 | cert pin、256-bit鍵、版と役割 | src/launcher/Protocol.cs/RoomIdentity/ValidateHello |
 | manifestとレコード | 認証済みTLS | peer→同期処理 | 4KiB、型・frame・bit・頻度検証 | OnlineProfile.Validate、LockstepPeer.AcceptRecord |
-| 共有メモリ・起動metadata | 同一Windowsセッション | ランチャー→C++ | Boot16、固定サイズNet IPC、CreateNew、rules2、sequence、abort。同権限の隔離ではない | GameSession.StartCore、coop_boot.h、NetBridge.cs、lockstep.h |
+| 共有メモリ・起動metadata | 同一Windowsセッション | ランチャー→C++ | Boot16、固定サイズNet IPC、CreateNew、rules3、sequence、abort。同権限の隔離ではない | GameSession.StartCore、coop_boot.h、NetBridge.cs、lockstep.h |
 | EXE/DLL/設定 | ローカルファイル/配布ZIP | 配布物→ユーザープロセス | EXE既知版、命令照合。独立した配布署名なし | GameSession.StartCore、src/injector/injector.cpp |
 | Steam起動待受 | 既知Steam本体の正常なstartup | ローカルローダー→game hook | status 5、seed戻り先＋primary thread照合、import復元後に設置。認証迂回なし | th12coop.cpp/bootstrapClock、game_layout.h/SelectLayout |
 | 診断・セッション領域 | 自動生成 | ゲーム→ローカルディスク | 固定ファイル名、binary sessionのhex化 | OnlineProfile.Prepare、LockstepPeer.Compare |
@@ -97,7 +97,7 @@ flowchart LR
 | TM-001 | 非招待者/漏洩先 | 到達性と招待の漏洩が必要 | 招待を再利用し正規相手より先に参加 | 不正入室・セッション妨害 | 参加鍵、ゲーム状態 | TLS pin+cap固定時間検証、ホスト終了後のidentity更新 (Protocol.cs、LauncherForm.StartSession) | 招待所有者を実名確認しない。クリップボード等のコピーは残り得る | private共有を維持し、終了済み招待拒否を回帰試験 | 鍵を含めず認証成功/失敗を確認 | low: 256-bit推測は現実的でなく漏洩が前提 | medium: 参加/停止は可能だがファイル実行権限はない | low |
 | TM-002 | 到達可能な第三者 | 待受ポートが公開/到達可能 | 認証枠と回線を継続占有 | ゲーム開始不能 | 可用性 | 同時8件、4秒期限、待機1件 (OnlineSession.AcceptGuest) | IP別制限なし。回線DDoSは対象外 | 既知peer向けVPN/ファイアウォールを優先。常時公開する場合は接続頻度制限を追加 | 認証枠占有/拒否の集計、秘密を記録しない | medium: 公開時は容易、private LANでは低い | medium: 待受と利用者回線が影響 | medium |
 | TM-003 | 認証済み改造peer | 招待が必要 | 過大/高頻度/順序違い/停止したレコードを送る | セッション停止、処理量増加 | メモリ、CPU、ゲーム可用性 | 4KiB確保前検証、512/s、ping4/s、120件窓、35秒入力待ち (SecureChannel.Receive、LockstepPeer.AcceptRecord/Pump) | 協力相手自身による切断は防げない | idle認証、途中本文、読まないpeer、終了時cleanupを実通信で回帰試験 | bounded timeoutと違反理由。招待/本文はログ不要 | medium: 参加者なら容易だがtrusted friend前提 | medium: boundedな停止、任意コード実行の証拠なし | medium |
-| TM-004 | 改造peer/未検証状態の不具合 | ゲーム実行または偽digest送信 | 未収録状態の差や虚偽hashを見逃させる | 異なるゲーム進行・検証の誤認 | 状態整合性、診断結果 | 毎frameの部分FNV64比較、版/asset照合、不一致停止 (lockstep.h/Fingerprint、LockstepPeer.Compare) | ECL命令/stack等の完全正規化なし。全ステージの網羅試験は未完了 | 不一致の根本原因を再現試験で検証。採用fieldを明記し全状態保証をしない | 最初の不一致frameとcomponent、原本を含めない診断 | medium: 未採用状態と未検証場面に不確実性が残る | medium: ゲーム正しさに影響、peerから任意メモリ復元はしない | medium |
+| TM-004 | 改造peer/未検証状態の不具合 | ゲーム実行または偽digest送信 | 未収録状態の差や虚偽hashを見逃させる | 異なるゲーム進行・検証の誤認 | 状態整合性、診断結果 | 毎frameの部分FNV64比較、版/asset照合、不一致停止 (lockstep.h/Fingerprint、LockstepPeer.Compare) | ECL raw stack、弾/レーザー/ホーミング等に未収録状態あり。全ステージの網羅試験は未完了 | 不一致の根本原因を再現試験で検証。採用fieldを明記し全状態保証をしない | 最初の不一致frameとcomponent、原本を含めない診断 | medium: 未採用状態と未検証場面に不確実性が残る | medium: ゲーム正しさに影響、peerから任意メモリ復元はしない | medium |
 | TM-005 | 悪意ある配布元/ローカル差替え | 利用者が信頼できないMODを取得/実行 | DLL/ランチャーを差し替える | 利用者権限のコード実行 | PC、ファイル、配布物 | 既知ゲームEXEと命令照合、peer由来pathを禁止 (injector.cpp、th12coop.cpp/start、OnlineProfile) | 相互hashは配布署名ではない | 公開配布時は信頼した経路と独立した署名/指紋を提供。ローカルbuildとの差を検証 | 配布hash、署名検証、再現可能なbuild記録 | low: 現在ローカル作成、第三者配布なし | high: 実行すればユーザー権限で動く | medium |
 | TM-006 | 同一ユーザーのローカルプロセス | 同一権限で先取り/改変可能 | 固定IPC名や作業ファイルへ干渉 | 起動停止、ローカル整合性喪失 | IPC、設定、ゲーム | net mapping CreateNew、固定サイズ/版、EXEhash、原本から分離 (NetBridge、Prepare-Game.ps1) | PID名events、ハードリンクは同権限隔離ではない | 外部からstate/pathを受けない現境界を維持。多ユーザー運用を追加する場合のみACL/ランダム起動tokenを設計 | 名前衝突・版不一致でfail closed、起動前後の原本hash | low: リモートから直接条件を作れず、同権限侵害は範囲外 | medium: MODだけで隔離不能 | low |
 
@@ -119,7 +119,7 @@ flowchart LR
 | src/launcher/OnlineProfile.cs、GameBuild.cs | build IDと既知EXE/assetの結合、互換群と依存関係の検証、相手のhashとローカルpathの分離 | TM-004, TM-005, TM-006 |
 | src/launcher/LauncherForm.cs | 部屋終了後の招待更新、UI再開前のcleanup | TM-001, TM-003 |
 | src/launcher/GameSession.cs、OwnedGameJob.cs | 停止中に所有ゲームだけをJobへ登録、注入/終了、起動失敗の復元 | TM-003, TM-005, TM-006 |
-| src/native/lockstep.h、coop_resources.h、coop_effects.h | rules2、共有メモリ境界、非同期loadの待機、復帰権・所有者・世代と部分digest | TM-004, TM-006 |
+| src/native/lockstep.h、coop_resources.h、coop_effects.h | rules3、共有メモリ境界、非同期loadの待機、復帰権・所有者・世代と部分digest | TM-004, TM-006 |
 | src/native/coop_boot.h、patch.h | 全モードのearly起動契約、thread所属、命令照合、設置失敗と復元試行 | TM-004, TM-005, TM-006 |
 | src/native/th12coop.cpp、game_layout.h | 既知layoutと対応命令、Steam起動待受のthread/戻り先検証、import復元とready順序、オブジェクト寿命 | TM-004, TM-005 |
 | src/injector/injector.cpp | PID/EXE/ロードパスのローカル検証 | TM-005 |
@@ -131,7 +131,7 @@ flowchart LR
 - 確認済み: 招待、TCP/TLS、manifest、入力、mapping、ローダー、ローカルファイル/ログの入口をモデル化した。各境界に対応する脅威を含めた。
 - runtimeと開発/スモーク経路を区別し、ユーザー確認済みの2人private招待を優先度へ反映した。新しい外部デプロイの許可とは解釈していない。
 - 任意のbuild名を互換と扱わず、既知プロファイルの検証後にのみ通常版1.00b/Steam版1.00bを同一群へ入れる。システム依存DLLが両方で`system`の場合、その識別値はシステムDLL全体のhash一致を意味しない。
-- ルール版2のdigestには共有復帰権・全滅状態・ボム所有者、damage source・ボム・スペル・ランク、アイテム・標的・衝突の保持状態、霊夢Aの現世代emitter/beamの所有者と確認済み座標・タイマーを含む。ポインタはactor IDや判定番号へ正規化し、無関係な演出や旧世代payloadは比較しない。ECL命令/stack/非同期context、全ステージ内部状態、霊夢A beam移動履歴`+2A0..+3F3`などを含む完全snapshotは未実装。現在のdamage geometryの一致だけで将来の全挙動の一致を証明しない。
+- ルール版3のdigestには共有復帰権・全滅状態・ボム所有者、damage source・ボム・スペル・ランク、アイテム・標的・衝突の保持状態、霊夢Aの現世代emitter/beamの所有者と確認済み座標・タイマーを含む。ポインタはactor IDや判定番号へ正規化し、無関係な演出や旧世代payloadは比較しない。ルール3でRA beam移動履歴の確認済み`+2A0..+363`、primary/async ECL命令位置と初期化済みscalar、UFO/報酬/ベントラー、弾Ex状態を追加した。raw ECL stackや一部の弾・レーザー・ホーミング状態は未収録で、完全snapshotは未実装。現在のdamage geometryの一致だけで将来の全挙動の一致を証明しない。
 - 通常の起動失敗・切断・中止では所有ゲームの終了を待って回収する。ランチャー異常終了時にも所有handleの閉鎖でゲームを終了させるJob Objectを実装し、Steam補助プロセス等の子プロセスはこのJobの対象に含めない。`--owner-exit-test`の起動記録と、外部runnerによるゲーム終了確認は別の証拠として扱う。ここでは実行試験の合格を宣言せず、検証結果へ集約する。
 - 脆弱性が存在するという確定報告と、攻撃経路の検討を区別した。上限やTLSの存在だけで安全性の証明とはしない。
 - 試験ごとの合否は検証結果へ集約する。同一PCのペア試験を、別PC/別拠点や全機体・全ステージの検証へ拡張解釈しない。公開配布の信頼確認と外部中継の運用評価は別途必要。

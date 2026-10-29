@@ -51,6 +51,27 @@ static uint32_t SourceCount(unsigned char* p){uint32_t count=0;
  for(int i=0;i<128;i++)if(At<uint32_t>((uintptr_t)p+0x8988+i*0x74+0x70)&1)++count;
  return count;
 }
+// 0x401610 precedes the 1.00b insertion and has the same address in all builds.
+// Prime its 256-byte scratch buffer with a bounded invalid result. This makes
+// the 1.00a missing-format branch observable without relying on a random crash.
+__declspec(noinline) static uint32_t FormatScore(int value,float* position){
+ __try {
+  __asm {
+   sub esp,0x108
+   mov edi,esp
+   mov ecx,0x100
+   mov al,0x3f
+   rep stosb
+   mov byte ptr [esp+0xff],0
+   add esp,0x108
+   mov ebx,position
+   mov ecx,value
+   mov eax,0x401610
+   call eax
+  }
+  return 0;
+ } __except(EXCEPTION_EXECUTE_HANDLER) {return GetExceptionCode();}
+}
 }
 static uint32_t RunResourceAudit(uint32_t caseId,uint32_t* details){
  using namespace coop_resources;
@@ -176,6 +197,49 @@ static uint32_t RunResourceAudit(uint32_t caseId,uint32_t* details){
   details[6]=beam((unsigned char*)child,nullptr);
   At<uintptr_t>(childPayload+0x414)=source;
   check(details[5]==1&&details[6]==1&&Player()==firstActor,8);
+ }else if(caseId>=8&&caseId<=11){
+  // Real native Player ticks in production P1 -> P2 order. Cases8/9 are
+  // mirrored final-valid-frame deathbombs; cases10/11 reject expired partners.
+  At<int>(0x4b0c98)=2;At<int>(0x4b0ca0)=2;
+  At<int>((uintptr_t)gui+0x6d30)=0;At<int>((uintptr_t)enemy+0x70)=1;
+  int initiator=caseId==8||caseId==10?1:0;
+  int expired=1-initiator;
+  for(int n=0;n<2;n++){
+   auto p=Actor(n);At<int>((uintptr_t)p+0xa28)=caseId<10||n==expired?4:1;
+   Timer(p,caseId<10?7:n==expired?8:60);Invulnerable(p,0);
+  }
+  Tick(firstActor,initiator==0?2:0);Tick(secondActor,initiator==1?2:0);
+  details[1]=State(firstActor);details[2]=State(secondActor);
+  details[3]=At<uint32_t>(0x4b0c98);details[4]=At<uint32_t>(0x4b0ca0);details[5]=bombActor;
+  if(caseId<10){
+   check(State(firstActor)==1&&State(secondActor)==1,0);
+   check(At<int>(0x4b0c98)==2,1);
+  }else{
+   check(State(Actor(expired))==2&&State(Actor(initiator))==1,0);
+   check(At<int>(0x4b0c98)==1&&credit[expired],1);
+  }
+  check(At<int>(0x4b0ca0)==1&&bombActor==initiator,2);
+  Tick(firstActor);Tick(secondActor);
+  if(caseId<10)check(State(firstActor)==1&&State(secondActor)==1&&At<int>(0x4b0c98)==2,3);
+  details[6]=State(firstActor);details[7]=State(secondActor);details[8]=At<uint32_t>(0x4b0c98);
+ }else if(caseId==12){
+  // Isolate only the native text queue; no synthetic score is saved. Calls
+  // below still execute the real formatter and its real queue insertion.
+  auto ascii=(unsigned char*)VirtualAlloc(nullptr,0x20000,MEM_COMMIT|MEM_RESERVE,PAGE_READWRITE);
+  if(!ascii)return 0x40000001u;
+  auto oldAscii=At<unsigned char*>(0x4b43b8);At<unsigned char*>(0x4b43b8)=ascii;
+  const int values[]={-1,0,999,1000,999999999,1000000000,1000000001,2147483647};
+  const char* expected[]={"-1","0","999","1,000","999,999,999","1,000,000,000","1,000,000,001","2,147,483,647"};
+  float position[3]={0,0,0};
+  for(unsigned n=0;n<8;n++){
+   memset(ascii,0,0x20000);
+   uint32_t exception=FormatScore(values[n],position);
+   const char* actual=(const char*)ascii+0x97c;
+   check(exception==0&&At<uint32_t>((uintptr_t)ascii+0x18f7c)==1&&strcmp(actual,expected[n])==0,n);
+   details[1+n*3]=exception;details[2+n*3]=At<uint32_t>((uintptr_t)ascii+0x18f7c);
+   memcpy(details+3+n*3,actual,4);
+  }
+  At<unsigned char*>(0x4b43b8)=oldAscii;VirtualFree(ascii,0,MEM_RELEASE);
  }else return 0x20000000u;
  Player()=firstActor;details[28]=State(firstActor);details[29]=State(secondActor);
  details[30]=(uint32_t)OwnStateHash();details[31]=failure;return failure;

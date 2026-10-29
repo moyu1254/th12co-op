@@ -102,7 +102,13 @@ internal sealed class SecureChannel : IDisposable
             ValidateHello(acknowledgement, 1);
             return new SecureChannel(client, tls, acknowledgement[8..24]);
         }
-        catch { tls?.Dispose(); client.Dispose(); throw; }
+        catch (Exception error)
+        {
+            tls?.Dispose(); client.Dispose();
+            if (error is OperationCanceledException && !token.IsCancellationRequested)
+                throw new TimeoutException("相手への接続が10秒以内に完了しませんでした。", error);
+            throw;
+        }
         finally { CryptographicOperations.ZeroMemory(parsed.Capability); }
     }
 
@@ -136,7 +142,13 @@ internal sealed class SecureChannel : IDisposable
             await tls.WriteAsync(acknowledgement, deadline.Token);
             return new SecureChannel(client, tls, session);
         }
-        catch { tls.Dispose(); client.Dispose(); throw; }
+        catch (Exception error)
+        {
+            tls.Dispose(); client.Dispose();
+            if (error is OperationCanceledException && !token.IsCancellationRequested)
+                throw new TimeoutException("接続相手の認証が4秒以内に完了しませんでした。", error);
+            throw;
+        }
     }
 
     private static void ValidateHello(byte[] hello, byte role)
@@ -158,6 +170,8 @@ internal sealed class SecureChannel : IDisposable
             payload.CopyTo(record, 4);
             await stream.WriteAsync(record, deadline.Token);
         }
+        catch (OperationCanceledException error) when (!token.IsCancellationRequested)
+        { throw new TimeoutException("相手へのデータ送信が5秒以内に完了しませんでした。", error); }
         finally { writer.Release(); }
     }
 
@@ -167,13 +181,18 @@ internal sealed class SecureChannel : IDisposable
         // Native resource loading is bounded at 30 seconds. Keep transport
         // alive through that work plus delivery/cleanup margin.
         deadline.CancelAfter(TimeSpan.FromSeconds(40));
-        var header = new byte[4];
-        await stream.ReadExactlyAsync(header, deadline.Token);
-        var length = BinaryPrimitives.ReadInt32LittleEndian(header);
-        if (length is < 1 or > MaximumPayload) throw new IOException("通信データの長さが不正です。");
-        var payload = new byte[length];
-        await stream.ReadExactlyAsync(payload, deadline.Token);
-        return payload;
+        try
+        {
+            var header = new byte[4];
+            await stream.ReadExactlyAsync(header, deadline.Token);
+            var length = BinaryPrimitives.ReadInt32LittleEndian(header);
+            if (length is < 1 or > MaximumPayload) throw new IOException("通信データの長さが不正です。");
+            var payload = new byte[length];
+            await stream.ReadExactlyAsync(payload, deadline.Token);
+            return payload;
+        }
+        catch (OperationCanceledException error) when (!token.IsCancellationRequested)
+        { throw new TimeoutException("相手からのデータ受信が40秒以内に完了しませんでした。接続を確認してください。", error); }
     }
 
     public void Dispose()

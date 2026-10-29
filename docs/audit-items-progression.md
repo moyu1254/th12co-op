@@ -2,6 +2,8 @@
 
 Audit date: 2026-10-29. Primary evidence is the user's retail 1.00b executable, SHA-256 `d8d644d2e64957a3031b1a1399d0502e1ddaa5252d2c4e492770ad6717827628`. Addresses below are **1.00b**; the existing verified layout translates the corresponding 1.00a addresses by +0x20. Steam's on-disk code is wrapped, so Steam signatures are checked only after its native bootstrap. This document records static evidence and implementation scope; [verification/RESULTS.md](../verification/RESULTS.md) is the authoritative record of executed checks and their build-specific results.
 
+The later [item/UFO re-audit](audit-items-recheck.md) independently compares focused original-code regions, records native ownership/token/reward probes, and reproduces a future-state omission in the online fingerprint before correction. It supplements the static conclusions below.
+
 Reproduce the read-only evidence with `research/audit-items-progression.py`. It emits scoped disassembly and all 116 direct absolute Player singleton references into `research/audit-items-*.asm` and `research/audit-items-xrefs.json`. Function names are hints from th-re-data; an unnamed helper can inherit the preceding named function's label. The disassembly, not that label, determines the behavior described here.
 
 ## Item ownership and collection

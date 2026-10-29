@@ -45,16 +45,18 @@ Write-Host "PASS repository contents: $count tracked source/documentation files.
 if ($RunSelfTest) {
     $launcher = Join-Path $projectRoot 'dist\TH12Coop.exe'
     $report = Join-Path $projectRoot 'dist\launcher-test-results.txt'
+    $managedReport = Join-Path $projectRoot 'dist\managed-audit-results.json'
     if (-not (Test-Path -LiteralPath $launcher -PathType Leaf)) { throw 'Run build.ps1 -SelfContained first.' }
     # A WinExe must be explicitly waited on; PowerShell's direct invocation can
     # otherwise return before the process or its exit status is available.
     if (Test-Path -LiteralPath $report) { Remove-Item -LiteralPath $report }
+    if (Test-Path -LiteralPath $managedReport) { Remove-Item -LiteralPath $managedReport }
     $process = Start-Process -FilePath $launcher -ArgumentList '--self-test' -WorkingDirectory (Split-Path $launcher) -WindowStyle Hidden -PassThru
     try {
-        if (-not $process.WaitForExit(120000)) {
+        if (-not $process.WaitForExit(150000)) {
             $process.Kill()
             $process.WaitForExit()
-            throw 'Launcher self-tests exceeded 120 seconds.'
+            throw 'Launcher self-tests exceeded 150 seconds.'
         }
         if (Test-Path -LiteralPath $report) { Get-Content -LiteralPath $report }
         if ($process.ExitCode -ne 0) { throw "Launcher self-tests failed with exit code $($process.ExitCode)." }
@@ -62,4 +64,8 @@ if ($RunSelfTest) {
             throw 'Launcher did not produce a complete self-test report.'
         }
     } finally { $process.Dispose() }
+    if (-not (Test-Path -LiteralPath $managedReport)) { throw 'Managed regression report was not created.' }
+    $managedResult = Get-Content -LiteralPath $managedReport -Raw | ConvertFrom-Json
+    if (-not $managedResult.passed -or $managedResult.failed -ne 0 -or $managedResult.groups -lt 1) { throw 'Managed regressions did not pass.' }
+    Write-Host "PASS managed regressions: $($managedResult.groups) groups."
 }

@@ -1,0 +1,625 @@
+{
+  "passed": true,
+  "total": 74,
+  "smoke_sha256": "2ad127eac13f1e1977d9cb407dbb05cb07a1ee55063802c23e3a4e2bc682d991",
+  "native_source_sha256": {
+    "src/native/coop_audit.h": "3dd4c9cc37e384369e973e45380cfbaf208438c1f1bcd66c75d86b1e7a593f2d",
+    "src/native/coop_audit_bullets.h": "e579a7d808f179277c8b596941639b805d0fbf16a6c8141f7b87045be746c6bb",
+    "src/native/coop_audit_campaign.h": "6dd9887a2e1c7c24022fcf0421c429d0c2f31f5fc7d848e6e06c06289fc98b1f",
+    "src/native/coop_audit_ecl.h": "c7e3a392c093e0e9e063b75f838aec2cb5dd76d30a9d8ae92964079d14e2a47b",
+    "src/native/coop_audit_items.h": "0e2642395f7353cdc8c9614cb1032e215570e0853fec770c158178c11a2e504b",
+    "src/native/coop_audit_resources.h": "4206ec98f94a43221df5c5f13873d35d3a2162732e65d23d0c6ae9bd41794e36",
+    "src/native/coop_audit_sync.h": "369d959886f42c5f146d8459b17e607741013c4b57c95e9c4cd6358d1bba0402",
+    "src/native/coop_audit_targeting.h": "b2fa73f5401641d976c3029ad68c92c66620c73dd46a2105f90c0c92606dbe83",
+    "src/native/coop_boot.h": "99e88704df57aac96ec2da968763cc94b5f147b3196156791a502b50e624daa8",
+    "src/native/coop_collision.h": "fff9478949e1172996dd3654ab7b5ebedbd8ee6658180eca65424398c79bf43a",
+    "src/native/coop_ecl_digest.h": "2598cac62b8db6f7960a5405940f425d6efadbe22ee8d84500b7a3a635ba3c97",
+    "src/native/coop_effects.h": "c676967304508c39e7229f036df35c0df3e6a3a590525e5343d3407155864fc3",
+    "src/native/coop_force.h": "91ede9a2ed8a14f4d9f197b16561aa2f9d3d581cd51144f56a419b94dd1ced27",
+    "src/native/coop_homing.h": "85672af42a9e97a462045407767f89da1605f6e56a5220cb785c6994275b043f",
+    "src/native/coop_items.h": "b8f4c07463d6436330b2d669449d932928ba92f5889e7c83f2a3def12061a509",
+    "src/native/coop_progression.h": "e06615b710b67b32a46f1268b6b0bba6057f1cfb7082b60baae0740879e8e391",
+    "src/native/coop_projectile_digest.h": "b83f514193af520c7e88b7662e82e9b6a560770b1ba4e524f5eba7e14dfe2953",
+    "src/native/coop_resources.h": "cdb0ae87f748ba777ebfb11e0a0bec7f91ddaaa360a30079f9cdac1aaf69d7a0",
+    "src/native/coop_scorecompat.h": "235d1e34c9f6006de8b09887bc9efcbf2519eb714df363070d5bb42bc6ea0e87",
+    "src/native/coop_targeting.h": "d2f3ac50f3b82627c7cd69d2f00983ca565ea5b9171c8ef58a958017580af656",
+    "src/native/game_layout.h": "e2c0b078d6670dd5635488e0e5593d1eec123e170d5513a5b1c8c6fcac858514",
+    "src/native/lockstep.h": "d59fda4d0b6ecf38f7bd18ba620a06e8af3662bbcced1bba505dfe9b59d4a155",
+    "src/native/patch.h": "9c9f3f7bf21dd2b1c4a625aca9503661e7fb6636ff75d48df1501549f130d3b7",
+    "src/native/th12coop.cpp": "db824da9302de65c06bd6691df4cc3dd1f80d4dad92097acc604a8ca2eddca9e"
+  },
+  "cases": [
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 0,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 1,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 2,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 3,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 4,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 5,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 2,
+      "shot": 1,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 2,
+      "shot": 2,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 2,
+      "shot": 3,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 2,
+      "shot": 4,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 2,
+      "shot": 5,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 4,
+      "shot": 1,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 4,
+      "shot": 2,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 4,
+      "shot": 3,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 4,
+      "shot": 4,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 4,
+      "shot": 5,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 6,
+      "shot": 1,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 7,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 3,
+      "case": 1,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 3,
+      "case": 2,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 3,
+      "case": 3,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 3,
+      "case": 4,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 3,
+      "case": 5,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 3,
+      "case": 6,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 3,
+      "case": 7,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 3,
+      "case": 8,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 3,
+      "case": 9,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 3,
+      "case": 10,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 3,
+      "case": 11,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 3,
+      "case": 12,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 3,
+      "case": 13,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 3,
+      "case": 14,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 3,
+      "case": 15,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 3,
+      "case": 16,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 3,
+      "case": 17,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 3,
+      "case": 18,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 3,
+      "case": 19,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 2,
+      "case": 101,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 2,
+      "case": 102,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 2,
+      "case": 103,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 2,
+      "case": 104,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 2,
+      "case": 105,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 8,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 8,
+      "shot": 1,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 8,
+      "shot": 2,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 8,
+      "shot": 3,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 8,
+      "shot": 4,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 8,
+      "shot": 5,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 9,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 9,
+      "shot": 1,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 9,
+      "shot": 2,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 9,
+      "shot": 3,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 9,
+      "shot": 4,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 9,
+      "shot": 5,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 10,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 10,
+      "shot": 1,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 10,
+      "shot": 2,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 10,
+      "shot": 3,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 10,
+      "shot": 4,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 10,
+      "shot": 5,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 11,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 11,
+      "shot": 1,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 11,
+      "shot": 2,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 11,
+      "shot": 3,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 11,
+      "shot": 4,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 11,
+      "shot": 5,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 1,
+      "case": 12,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 5,
+      "case": 1,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 5,
+      "case": 2,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 5,
+      "case": 3,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 5,
+      "case": 4,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 5,
+      "case": 5,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 5,
+      "case": 6,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    },
+    {
+      "version": "retail-1.00b",
+      "family": 5,
+      "case": 7,
+      "shot": 0,
+      "passed": true,
+      "failure_mask": "00000000"
+    }
+  ]
+}

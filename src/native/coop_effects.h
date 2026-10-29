@@ -105,6 +105,11 @@ static uint64_t StateHash(){
    h.words(vm+0x430,12);
    if(emitter){h.words(p,0x18);h.words(p+0x1c,0x14);} // Skip timer speed pointer +18.
    else{
+    // Native 0x469D20 consumes this history and movement state before writing
+    // the next damage-source geometry. Equal current hitboxes are insufficient.
+    // The constructor zeroes the payload; +2A0..+363 contains scalar positions,
+    // velocity, speed, angle and flags (no timer-speed or allocation pointers).
+    h.words(p+0x2a0,0xc4);
     h.words(p+0x3f4,12);h.words(p+0x404,0x10); // Skip speed +400 and damage pointer +414.
     h.word(SourceIndex(p,owner));
    }

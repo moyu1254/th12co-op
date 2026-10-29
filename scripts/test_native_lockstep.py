@@ -15,7 +15,7 @@ k.CreateProcessW.argtypes=[W.LPCWSTR,W.LPWSTR,C.c_void_p,C.c_void_p,W.BOOL,W.DWO
 k.CreateProcessW.restype=W.BOOL
 k.CreateFileMappingW.argtypes=[W.HANDLE,C.c_void_p,W.DWORD,W.DWORD,W.DWORD,W.LPCWSTR];k.CreateFileMappingW.restype=W.HANDLE
 k.ResumeThread.argtypes=[W.HANDLE];k.ResumeThread.restype=W.DWORD
-k.TerminateProcess.argtypes=[W.HANDLE,W.UINT]
+k.TerminateProcess.argtypes=[W.HANDLE,W.UINT];k.TerminateProcess.restype=W.BOOL
 k.WaitForSingleObject.argtypes=[W.HANDLE,W.DWORD];k.WaitForSingleObject.restype=W.DWORD
 
 class NetGame:
@@ -25,6 +25,9 @@ class NetGame:
         except Exception:
             self.close();raise
     def _start(self,folder,seed):
+        folder=Path(folder).resolve()
+        if folder.parent!=ROOT or not folder.name.startswith(('game-test-','game-net-')):
+            raise ValueError('Native fixtures require an isolated game-test-* or game-net-* folder in the workspace')
         (folder/'th12.cfg').write_bytes((ROOT/'profiles/th12-online.cfg').read_bytes())
         for name in ('scoreth12.dat','score.dat'):
             p=folder/name
@@ -35,7 +38,7 @@ class NetGame:
         handle=k.CreateFileMappingW(W.HANDLE(-1),None,4,0,12544,f'Local\\TH12CoopNet_{self.info.pid}')
         if not handle:raise C.WinError(C.get_last_error())
         self.map=Mapping(f'Local\\TH12CoopNet_{self.info.pid}',True);k.CloseHandle(handle)
-        for offset,value in [(0,0x4e323154),(4,1),(8,12544),(12,256),(16,3),(20,seed),(24,k.GetTickCount()),(76,2),(92,self.info.tid)]:self.map.write32(offset,value)
+        for offset,value in [(0,0x4e323154),(4,1),(8,12544),(12,256),(16,3),(20,seed),(24,k.GetTickCount()),(76,3),(92,self.info.tid)]:self.map.write32(offset,value)
         result=subprocess.run([str(ROOT/'dist/injector.exe'),'--early',str(self.info.pid),str(self.info.tid),str(ROOT/'dist/th12coop-native.dll')],capture_output=True,text=True,timeout=20)
         if result.returncode:
             raise RuntimeError(f'Injection failed: {result.stdout} {result.stderr}')
@@ -51,11 +54,56 @@ class NetGame:
         offset=256+(frame%256)*16
         self.map.write32(offset+4,p1);self.map.write32(offset+8,p2);self.map.write32(offset+12,0);self.map.write32(offset,frame)
     def close(self):
-        if self.map:self.map.write32(28,99);self.map.close();self.map=None
-        if self.info.process:
-            k.TerminateProcess(self.info.process,0);k.WaitForSingleObject(self.info.process,5000);k.CloseHandle(self.info.process)
-        if self.info.thread:k.CloseHandle(self.info.thread)
-        self.info.process=None;self.info.thread=None
+        errors=[]
+        try:
+            if self.map:
+                try:
+                    self.map.write32(28,99)
+                except Exception as error:
+                    errors.append(f'mapping write: {error}')
+                finally:
+                    try:
+                        self.map.close()
+                        self.map=None
+                    except Exception as error:
+                        errors.append(f'mapping close: {error}')
+        finally:
+            try:
+                if self.info.process:
+                    try:
+                        observed=k.WaitForSingleObject(self.info.process,0)
+                        if observed==258:
+                            if not k.TerminateProcess(self.info.process,0):
+                                error=C.get_last_error()
+                                # The process may have exited between the poll
+                                # and TerminateProcess. Confirm that race rather
+                                # than treating an arbitrary API failure as exit.
+                                observed=k.WaitForSingleObject(self.info.process,0)
+                                if observed!=0:
+                                    raise RuntimeError(f'TerminateProcess failed (Win32 {error}); owned process exit not confirmed')
+                            else:
+                                observed=k.WaitForSingleObject(self.info.process,5000)
+                        if observed==258:
+                            raise RuntimeError('Owned process exit timed out after termination')
+                        if observed!=0:
+                            raise RuntimeError(f'WaitForSingleObject failed ({observed:#x}, Win32 {C.get_last_error()})')
+                        if not k.CloseHandle(self.info.process):
+                            raise RuntimeError(f'CloseHandle(process) failed (Win32 {C.get_last_error()})')
+                        # Retain the handle on failure so callers cannot report
+                        # success from nulled fields and can retry cleanup.
+                        self.info.process=None
+                    except Exception as error:
+                        errors.append(str(error))
+            finally:
+                if self.info.thread:
+                    try:
+                        if not k.CloseHandle(self.info.thread):
+                            raise RuntimeError(f'CloseHandle(thread) failed (Win32 {C.get_last_error()})')
+                        self.info.thread=None
+                    except Exception as error:
+                        errors.append(str(error))
+        if errors:
+            raise RuntimeError('Owned process cleanup failed: '+'; '.join(errors))
 
 def main():
     ap=argparse.ArgumentParser();ap.add_argument('--frames',type=int,default=1800);ap.add_argument('--seed',type=int,default=4660)

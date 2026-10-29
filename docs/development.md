@@ -24,23 +24,23 @@ CIは `contents: read` のみを使用し、認証情報をcheckout後に保持�
 
 ## リリース
 
-初回は `v0.1.0` の **Pre-release** とします。製品のバージョン番号と協力プレイの **Rules 2** は別の番号です。通信・ルール・設定の互換性が変わる修正では、対応するバージョン判定と検証も更新します。
+初回の `v0.1.0` は Rules 2、修正版 `v0.1.1` は Rules 3 の **Pre-release** です。製品のバージョン番号と協力プレイのルール番号は別の番号です。通信・ルール・設定の互換性が変わる修正では、対応するバージョン判定と検証も更新します。
 
-リリース対象のコミットについてCIと変更に応じた実ゲーム検証を完了し、対応版・実施済み検証・既知の制約をリリースノートへ記録します。将来のリリースでは `scripts/Package.ps1` でZIPを作成し、原作データやsmoke DLLが混入していないこと、展開後の起動、SHA-256を検証します。初回は既に検証したZIPを同じバイト列のまま添付し、CIの再ビルド出力へ差し替えません。
+リリース対象のコミットについてCIと変更に応じた実ゲーム検証を完了し、対応版・実施済み検証・既知の制約をリリースノートへ記録します。リリースでは `scripts/Package.ps1` でZIPを作成し、`scripts/verify_package.py --archive <ZIP> --out build/package-check.json` でソースとの内容一致・構造・ランタイムを検査する。原作データやsmoke DLLが混入していないこと、展開後の起動、SHA-256を検証します。初回は既に検証したZIPを同じバイト列のまま添付し、CIの再ビルド出力へ差し替えません。
 
-以下は検証済みZIP、`release/SHA256SUMS.txt`、実測内容を書いた `docs/releases/v0.1.0.md`、そのZIPに対応するコミットを用意した後の操作例です。タグは必ず検証対象コミットへ付けます。公開済みのタグや添付ZIPを上書きせず、修正は新しいバージョンとして出します。
+以下は検証済みZIP、`release/SHA256SUMS-v0.1.1.txt`、実測内容を書いた `docs/releases/v0.1.1.md`、そのZIPに対応するコミットを用意した後の操作例です。タグは必ず検証対象コミットへ付けます。公開済みのタグや添付ZIPを上書きせず、修正は新しいバージョンとして出します。
 
 ```powershell
-$tag = 'v0.1.0'
+$tag = 'v0.1.1'
 $validatedCommit = '<検証対象の完全なコミットSHA>'
-$zip = 'release/TH12COOP-Lockstep-Windows.zip'
+$zip = 'release/TH12COOP-v0_1_1-Windows.zip'
 $notes = "docs/releases/$tag.md"
 Get-FileHash -LiteralPath $zip -Algorithm SHA256
-Get-Content release/SHA256SUMS.txt
+Get-Content release/SHA256SUMS-v0.1.1.txt
 # 指紋と検証記録、ZIPとリリースノートを確認してから実行。
-git tag -a $tag $validatedCommit -m "TH12 CO-OP $tag (Rules 2)"
+git tag -a $tag $validatedCommit -m "TH12 CO-OP $tag (Rules 3)"
 git push origin $tag
-gh release create $tag $zip release/SHA256SUMS.txt --repo moyu1254/th12co-op --verify-tag --prerelease --latest=false --title "TH12 CO-OP $tag" --notes-file $notes
+gh release create $tag $zip release/SHA256SUMS-v0.1.1.txt --repo moyu1254/th12co-op --verify-tag --prerelease --latest=false --title "TH12 CO-OP $tag" --notes-file $notes
 gh release view $tag --repo moyu1254/th12co-op
 ```
 

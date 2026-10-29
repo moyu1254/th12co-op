@@ -1,0 +1,338 @@
+{
+  "passed": true,
+  "mode": "practice",
+  "stage": 1,
+  "rulesVersion": 3,
+  "scope": "Initial paired gameplay; not a full clear or all-spell test",
+  "gameFolders": [
+    "[workspace]\\game-test-retail-1.00b-net-host",
+    "[workspace]\\game-test-retail-1.00b-net-guest"
+  ],
+  "exeSha256": "d8d644d2e64957a3031b1a1399d0502e1ddaa5252d2c4e492770ad6717827628",
+  "nativeSha256": "e18323aaa08ace40c947a676eb7b0d89d956ca44e60891001d52c0302d436961",
+  "matchedDigestFrames": 778,
+  "gameplayFrames": 180,
+  "samples": [
+    {
+      "frame": 599,
+      "hash": "cff43becbca0ae54",
+      "scene": 7,
+      "stage": 1,
+      "packedPlayers": 257,
+      "gameTime": 31,
+      "rank": 1,
+      "modeFlags": 16,
+      "actors": [
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "shots": [
+        [
+          4,
+          4
+        ],
+        [
+          4,
+          4
+        ]
+      ],
+      "ecl": {
+        "enemies": 2,
+        "contexts": 4,
+        "asyncContexts": 2
+      }
+    },
+    {
+      "frame": 629,
+      "hash": "d136b8e9dd8fae9d",
+      "scene": 7,
+      "stage": 1,
+      "packedPlayers": 257,
+      "gameTime": 61,
+      "rank": 1,
+      "modeFlags": 16,
+      "actors": [
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "shots": [
+        [
+          26,
+          26
+        ],
+        [
+          26,
+          26
+        ]
+      ],
+      "ecl": {
+        "enemies": 2,
+        "contexts": 5,
+        "asyncContexts": 3
+      }
+    },
+    {
+      "frame": 659,
+      "hash": "9417887d563c9a9c",
+      "scene": 7,
+      "stage": 1,
+      "packedPlayers": 257,
+      "gameTime": 91,
+      "rank": 1,
+      "modeFlags": 16,
+      "actors": [
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "shots": [
+        [
+          26,
+          26
+        ],
+        [
+          26,
+          26
+        ]
+      ],
+      "ecl": {
+        "enemies": 4,
+        "contexts": 7,
+        "asyncContexts": 3
+      }
+    },
+    {
+      "frame": 689,
+      "hash": "0af8e337268d49df",
+      "scene": 7,
+      "stage": 1,
+      "packedPlayers": 257,
+      "gameTime": 121,
+      "rank": 1,
+      "modeFlags": 16,
+      "actors": [
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "shots": [
+        [
+          26,
+          26
+        ],
+        [
+          26,
+          26
+        ]
+      ],
+      "ecl": {
+        "enemies": 5,
+        "contexts": 8,
+        "asyncContexts": 3
+      }
+    },
+    {
+      "frame": 719,
+      "hash": "b0b1c3423b8e78dc",
+      "scene": 7,
+      "stage": 1,
+      "packedPlayers": 257,
+      "gameTime": 151,
+      "rank": 1,
+      "modeFlags": 16,
+      "actors": [
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "shots": [
+        [
+          26,
+          26
+        ],
+        [
+          26,
+          26
+        ]
+      ],
+      "ecl": {
+        "enemies": 8,
+        "contexts": 11,
+        "asyncContexts": 3
+      }
+    },
+    {
+      "frame": 749,
+      "hash": "9f1c3e4dadae45b5",
+      "scene": 7,
+      "stage": 1,
+      "packedPlayers": 257,
+      "gameTime": 181,
+      "rank": 1,
+      "modeFlags": 16,
+      "actors": [
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "shots": [
+        [
+          26,
+          26
+        ],
+        [
+          26,
+          26
+        ]
+      ],
+      "ecl": {
+        "enemies": 9,
+        "contexts": 12,
+        "asyncContexts": 3
+      }
+    },
+    {
+      "frame": 778,
+      "hash": "bdc6d03abf6e3bce",
+      "scene": 7,
+      "stage": 1,
+      "packedPlayers": 257,
+      "gameTime": 210,
+      "rank": 1,
+      "modeFlags": 16,
+      "actors": [
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "shots": [
+        [
+          22,
+          22
+        ],
+        [
+          22,
+          22
+        ]
+      ],
+      "ecl": {
+        "enemies": 11,
+        "contexts": 14,
+        "asyncContexts": 3
+      }
+    }
+  ],
+  "pids": [
+    25952,
+    38048
+  ],
+  "entry": {
+    "frame": 598,
+    "hash": "803f0998e94486c1",
+    "scene": 7,
+    "stage": 1,
+    "packedPlayers": 257,
+    "gameTime": 30,
+    "rank": 1,
+    "modeFlags": 16,
+    "actors": [
+      [
+        1,
+        1
+      ],
+      [
+        1,
+        1
+      ]
+    ],
+    "shots": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ]
+    ]
+  },
+  "final": {
+    "frame": 778,
+    "hash": "bdc6d03abf6e3bce",
+    "scene": 7,
+    "stage": 1,
+    "packedPlayers": 257,
+    "gameTime": 210,
+    "rank": 1,
+    "modeFlags": 16,
+    "actors": [
+      [
+        1,
+        1
+      ],
+      [
+        1,
+        1
+      ]
+    ],
+    "shots": [
+      [
+        22,
+        22
+      ],
+      [
+        22,
+        22
+      ]
+    ],
+    "ecl": {
+      "enemies": 11,
+      "contexts": 14,
+      "asyncContexts": 3
+    }
+  },
+  "bothActorsShot": true,
+  "maxObservedEcl": {
+    "enemies": 11,
+    "contexts": 14,
+    "asyncContexts": 3
+  },
+  "ownedHandlesClosed": true
+}

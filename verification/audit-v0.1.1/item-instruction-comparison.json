@@ -1,0 +1,79 @@
+{
+  "profiles": [
+    {
+      "profile": "retail-1.00a",
+      "sha256": "e2939ba3f92e427216a619191a682a8197cc59a64eab99302a7b98811d6120a9",
+      "constants": {
+        "stage_factor": 0.0020000000949949026,
+        "food_base": 0.03200000151991844,
+        "token_food": 0.10000000149011612,
+        "token_radius_squared": 3600.0,
+        "ufo_absorb_radius_squared": 324.0
+      }
+    },
+    {
+      "profile": "retail-1.00b",
+      "sha256": "d8d644d2e64957a3031b1a1399d0502e1ddaa5252d2c4e492770ad6717827628",
+      "constants": {
+        "stage_factor": 0.0020000000949949026,
+        "food_base": 0.03200000151991844,
+        "token_food": 0.10000000149011612,
+        "token_radius_squared": 3600.0,
+        "ufo_absorb_radius_squared": 324.0
+      }
+    }
+  ],
+  "comparison_rule": "identical instructions/operands except verified +0x20 code references",
+  "ranges": {
+    "local_homing_and_deathbomb_release": {
+      "retail_100a_start": "0x425fdf",
+      "retail_100b_start": "0x425fff",
+      "instruction_count": 45,
+      "equivalent": true,
+      "differences": []
+    },
+    "changing_token_proximity": {
+      "retail_100a_start": "0x42626f",
+      "retail_100b_start": "0x42628f",
+      "instruction_count": 57,
+      "equivalent": true,
+      "differences": []
+    },
+    "ufo_item_absorption": {
+      "retail_100a_start": "0x426859",
+      "retail_100b_start": "0x426879",
+      "instruction_count": 73,
+      "equivalent": true,
+      "differences": []
+    },
+    "small_power_award": {
+      "retail_100a_start": "0x426fd0",
+      "retail_100b_start": "0x426ff0",
+      "instruction_count": 60,
+      "equivalent": true,
+      "differences": []
+    },
+    "ufo_spawn": {
+      "retail_100a_start": "0x44a880",
+      "retail_100b_start": "0x44a8a0",
+      "instruction_count": 188,
+      "equivalent": true,
+      "differences": []
+    },
+    "ufo_food_and_full_bonus": {
+      "retail_100a_start": "0x44ac80",
+      "retail_100b_start": "0x44aca0",
+      "instruction_count": 160,
+      "equivalent": true,
+      "differences": []
+    },
+    "actor_local_dialogue_transition": {
+      "retail_100a_start": "0x41d000",
+      "retail_100b_start": "0x41d020",
+      "instruction_count": 26,
+      "equivalent": true,
+      "differences": []
+    }
+  },
+  "passed": true
+}

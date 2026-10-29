@@ -271,13 +271,11 @@ internal sealed class GameSession : IDisposable
 
     private sealed class ConfigurationSnapshot(string path, byte[]? contents)
     {
-        private static bool Valid(byte[] bytes) => bytes.Length == 60 && BinaryPrimitives.ReadUInt32LittleEndian(bytes) == 0x00120001;
-
         internal static ConfigurationSnapshot Read(string path)
         {
             if (!File.Exists(path)) return new ConfigurationSnapshot(path, null);
             var contents = File.ReadAllBytes(path);
-            if (!Valid(contents))
+            if (!GameConfiguration.Valid(contents))
                 throw new IOException($"設定ファイルが破損しているため起動できません。ゲームを終了し、正常な製品版のth12.cfgを次の場所へ復元してください: {path}");
             return new ConfigurationSnapshot(path, contents);
         }
@@ -289,7 +287,7 @@ internal sealed class GameSession : IDisposable
             {
                 // A fresh game can create its defaults. Remove only a new,
                 // invalid configuration produced by a failed initialization.
-                if (current != null && !Valid(current)) File.Delete(path);
+                if (current != null && !GameConfiguration.Valid(current)) File.Delete(path);
                 return;
             }
             if (current != null && current.AsSpan().SequenceEqual(contents)) return;

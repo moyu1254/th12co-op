@@ -11,6 +11,7 @@
 #include "lockstep.h"
 #include "coop_boot.h"
 #include "patch.h"
+#include "coop_scorecompat.h"
 
 struct Shared {
     uint32_t magic, version;
@@ -341,6 +342,7 @@ static bool installHooks(){
  coop_homing::Register(registry);
  coop_force::Register(registry);
  coop_effects::Register(registry);
+ coop_scorecompat::Register(registry);
  if(!registry.Validate()){
   ipc->status=0x80000001;
   if(logfile)fprintf(logfile,"Unsupported signature at %08lx; no hooks applied\n",(unsigned long)registry.FailedAddress());

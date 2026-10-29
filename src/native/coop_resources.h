@@ -8,6 +8,9 @@
 namespace coop_resources {
 static unsigned char *firstActor, *secondActor;
 static bool enabled, credit[2], gameOverIssued, suppressBomb;
+// Transient paired-tick snapshot: P1 and P2 observe the same deathbomb deadline
+// even though native Player ticks run in that fixed order.
+static bool frameOpen, graceAtFrameStart[2];
 static int bombActor=-1;
 static void *deathOriginal, *refillOriginal, *bombStartOriginal, *invulnOriginal, *bombDamageOriginal, *bombCancelOriginal;
 static uintptr_t respawnAddress, waitAddress, gameOverAddress, rankResume, damageScaleResume, damageScaleSkip, spellScaleResume, spellScaleSkip;
@@ -20,8 +23,12 @@ static bool Eligible(unsigned char* p){return p&&!gameOverIssued&&(State(p)==0||
 static void Reset(unsigned char* p1=nullptr,unsigned char* p2=nullptr){
  firstActor=p1;secondActor=p2;enabled=p1&&p2;
  credit[0]=credit[1]=gameOverIssued=suppressBomb=false;bombActor=-1;
+ frameOpen=graceAtFrameStart[0]=graceAtFrameStart[1]=false;
 }
-static void OnActivate(){credit[0]=credit[1]=gameOverIssued=false;bombActor=-1;}
+static void OnActivate(){
+ credit[0]=credit[1]=gameOverIssued=false;bombActor=-1;
+ frameOpen=graceAtFrameStart[0]=graceAtFrameStart[1]=false;
+}
 static void UpdateLives(){
  auto gui=At<void*>(0x4b43e4);
  if(gui)((void(__stdcall*)(void*,int,int))coop_game::Code(0x41ce40))(gui,At<int>(0x4b0c98),At<int>(0x4b0c9c));
@@ -36,8 +43,14 @@ static void AllocateReserves(){
  }
  if(changed)UpdateLives();
 }
-static void BeforeTick(unsigned char* p){if(p==firstActor)AllocateReserves();}
-static void AfterTick(unsigned char*){}
+static void BeforeTick(unsigned char* p){
+ if(p!=firstActor)return;
+ AllocateReserves();frameOpen=enabled;
+ for(int n=0;n<2;n++)graceAtFrameStart[n]=enabled&&State(Actor(n))==4&&At<int>((uintptr_t)Actor(n)+0xa34)<8;
+}
+static void AfterTick(unsigned char* p){
+ if(p==secondActor)frameOpen=graceAtFrameStart[0]=graceAtFrameStart[1]=false;
+}
 __declspec(noinline) static void CallDeath(unsigned char* actor){__asm {
  mov esi,actor
  call deathOriginal
@@ -133,11 +146,12 @@ static int __cdecl BombStartHook(){
  int result=((int(__cdecl*)())bombStartOriginal)();
  if(!starting||result!=0){bombActor=previousOwner;return result;}
  // The native initiator finishes its own deathbomb branch after this returns.
- // Rescue the partner only during the same verified eight-frame grace window.
+ // P1 may already have advanced timer7 to8 before P2 starts its bomb. Use the
+ // shared frame's starting eligibility, without undoing any committed miss.
  int frames=At<int>((uintptr_t)Player()+0xc404);if(frames<40)frames=40;
  for(int n=0;n<2;n++){
   auto p=Actor(n);
-  if(State(p)==4&&At<int>((uintptr_t)p+0xa34)<8){SetStateTimer(p,60);At<int>((uintptr_t)p+0xa28)=1;}
+  if(State(p)==4&&(At<int>((uintptr_t)p+0xa34)<8||(frameOpen&&graceAtFrameStart[n]))){SetStateTimer(p,60);At<int>((uintptr_t)p+0xa28)=1;}
   if((p==Player()||Eligible(p))&&At<int>((uintptr_t)p+0xc404)<frames)Invulnerable(p,frames);
  }
  return result;

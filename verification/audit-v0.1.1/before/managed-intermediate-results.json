@@ -1,0 +1,68 @@
+{
+  "passed": false,
+  "groups": 12,
+  "failed": 1,
+  "results": [
+    {
+      "name": "Cancelled Steam identity creation leaves no final file and can retry",
+      "passed": true,
+      "error": null
+    },
+    {
+      "name": "Cancelled online preparation leaves no final directory and can retry",
+      "passed": true,
+      "error": null
+    },
+    {
+      "name": "Failed online asset preparation leaves no partially published directory",
+      "passed": true,
+      "error": null
+    },
+    {
+      "name": "Game assets changed after the manifest was read are rejected",
+      "passed": true,
+      "error": null
+    },
+    {
+      "name": "Native DLL changed after the manifest was read is rejected",
+      "passed": true,
+      "error": null
+    },
+    {
+      "name": "Failed startup restores the prior valid configuration exactly",
+      "passed": true,
+      "error": null
+    },
+    {
+      "name": "Native local-input IPC rejects unsupported bits and unstable frame",
+      "passed": true,
+      "error": null
+    },
+    {
+      "name": "Cleanup preserves the first native abort reason",
+      "passed": false,
+      "error": "System.Exception: cleanup overwrote the synchronization failure reason"
+    },
+    {
+      "name": "Initial configuration writes are atomic and preserve existing files",
+      "passed": true,
+      "error": null
+    },
+    {
+      "name": "A disconnected peer cancels preparation before publishing a session",
+      "passed": true,
+      "error": null
+    },
+    {
+      "name": "TLS EOF is a transport failure and caller cancellation remains cancellation",
+      "passed": true,
+      "error": null
+    },
+    {
+      "name": "TLS receive inactivity deadline is reported as timeout, not user cancellation",
+      "passed": true,
+      "error": null
+    }
+  ],
+  "scope": "Synthetic temporary files, real mapped IPC, and actual loopback TLS with the production 40-second receive deadline; no original game assets, native DLL loading, or game processes."
+}

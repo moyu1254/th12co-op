@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "tests": 5,
+  "scope": "Disposable synthetic configurations and fake OwnedProcess only; no game launched",
+  "sourceSha256": "6913bed81376ec00cd137cb4cc0cc8b10316fde2e7b0834525a6fdb885e82b6a",
+  "testSha256": "877802808b3909d0bcaa84b94caa5a0dfdd7a0a9b40dcd94b4e342339f3e6c0f",
+  "failures": [],
+  "output": "test_direct_workspace_test_folder_reaches_fake_process (__main__.FolderTests.test_direct_workspace_test_folder_reaches_fake_process) ... ok\ntest_external_test_prefix_is_rejected_before_write (__main__.FolderTests.test_external_test_prefix_is_rejected_before_write) ... ok\ntest_legacy_game_smoke_reaches_fake_process (__main__.FolderTests.test_legacy_game_smoke_reaches_fake_process) ... ok\ntest_nested_test_folder_is_rejected_before_write (__main__.FolderTests.test_nested_test_folder_is_rejected_before_write) ... ok\ntest_workspace_non_test_folder_is_rejected_before_write (__main__.FolderTests.test_workspace_non_test_folder_is_rejected_before_write) ... ok\n\n----------------------------------------------------------------------\nRan 5 tests in 0.036s\n\nOK\n"
+}

@@ -3,8 +3,9 @@
 #include <stdint.h>
 #include <string.h>
 
-// The 1.00b score-format fix adds 0x20 bytes before every code address used by
-// this MOD. The rest of .text was compared with 1.00a after normalizing code
+// The 1.00b score-format fix adds 0x20 bytes before gameplay hook addresses.
+// The score formatter itself precedes the insertion and is patched separately
+// only on 1.00a. The rest of .text was compared after normalizing code
 // references: only the startup version character differs. Globals, imports,
 // vtable locations and object layouts are unchanged. See the version audit.
 namespace coop_game {

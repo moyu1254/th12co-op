@@ -14,7 +14,7 @@ internal static partial class SelfTests
     public static async Task<int> Run()
     {
         var passed = new List<string>();
-        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(120));
         var token = lifetime.Token;
         try
         {
@@ -171,6 +171,8 @@ internal static partial class SelfTests
                 Expect(memory.ReadUInt32(28) == 3, "native fail-closed abort");
             }
             passed.Add("Real mapped IPC rejects duplicate/ahead commits and signals native abort");
+            if (await ManagedAudit() != 0) throw new IOException("Managed preparation/transport regression suite failed; see managed-audit-results.json.");
+            passed.Add("Managed preparation, asset drift, IPC and actual TLS deadline regression suite");
             var result = string.Join(Environment.NewLine, passed.Select(line => "PASS " + line)) + Environment.NewLine + $"PASS {passed.Count} test groups";
             Console.WriteLine(result);
             File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "launcher-test-results.txt"), result);

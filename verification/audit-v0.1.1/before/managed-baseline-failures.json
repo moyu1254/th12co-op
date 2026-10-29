@@ -1,0 +1,58 @@
+{
+  "passed": false,
+  "groups": 10,
+  "failed": 8,
+  "results": [
+    {
+      "name": "Cancelled Steam identity creation leaves no final file and can retry",
+      "passed": false,
+      "error": "System.Exception: cancelled identity left a final file"
+    },
+    {
+      "name": "Cancelled online preparation leaves no final directory and can retry",
+      "passed": false,
+      "error": "System.Exception: cancelled preparation left a final directory"
+    },
+    {
+      "name": "Failed online asset preparation leaves no partially published directory",
+      "passed": false,
+      "error": "System.Exception: failed preparation published partial assets"
+    },
+    {
+      "name": "Game assets changed after the manifest was read are rejected",
+      "passed": false,
+      "error": "System.Exception: Expected IOException"
+    },
+    {
+      "name": "Native DLL changed after the manifest was read is rejected",
+      "passed": false,
+      "error": "System.Exception: Expected IOException"
+    },
+    {
+      "name": "Failed startup restores the prior valid configuration exactly",
+      "passed": true,
+      "error": null
+    },
+    {
+      "name": "Native local-input IPC rejects unsupported bits and unstable frame",
+      "passed": false,
+      "error": "System.Exception: Expected IOException"
+    },
+    {
+      "name": "A disconnected peer cancels preparation before publishing a session",
+      "passed": false,
+      "error": "System.Exception: disconnected startup still published a session"
+    },
+    {
+      "name": "TLS EOF is a transport failure and caller cancellation remains cancellation",
+      "passed": true,
+      "error": null
+    },
+    {
+      "name": "TLS receive inactivity deadline is reported as timeout, not user cancellation",
+      "passed": false,
+      "error": "System.OperationCanceledException: The operation was canceled."
+    }
+  ],
+  "scope": "Synthetic temporary files and real mapped IPC; no original game assets, native DLL loading, or game processes."
+}

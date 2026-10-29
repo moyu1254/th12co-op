@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
+using System.Runtime.ExceptionServices;
 using System.Text.Json;
 
 namespace TH12Coop;
@@ -21,6 +22,7 @@ internal sealed class LockstepPeer
     private uint nextRemoteInput, nextRemoteDigest = 1;
     private uint confirmed;
     private string? sessionDirectory;
+    private object? syncFailure;
     private bool gotReady;
     private double recordTokens = 1024, pingTokens = 8;
     private long budgetTimestamp = Stopwatch.GetTimestamp();
@@ -61,15 +63,27 @@ internal sealed class LockstepPeer
         if (!localDigests.TryGetValue(frame, out var local) || !remoteDigests.TryGetValue(frame, out var remote)) return;
         if (local != remote)
         {
-            if (sessionDirectory != null)
-                File.WriteAllText(Path.Combine(sessionDirectory, "sync-failure.json"), JsonSerializer.Serialize(new
-                { frame, role, local, remote, localComponents = trace.FirstOrDefault(item => item.Digest.Frame == frame)?.Components }, new JsonSerializerOptions { WriteIndented = true }));
+            syncFailure = new { frame, role, local, remote, localComponents = trace.FirstOrDefault(item => item.Digest.Frame == frame)?.Components };
             bridge?.Abort(3);
             throw new IOException($"フレーム {frame} でゲーム状態が一致しません。同期を停止しました。");
         }
         localDigests.Remove(frame); remoteDigests.Remove(frame);
         if (frame != confirmed + 1) throw new IOException("状態検証のフレーム番号が連続していません。");
         confirmed = frame;
+    }
+
+    private async Task WriteDiagnostic(string name, object value)
+    {
+        if (sessionDirectory == null) return;
+        // Diagnostics are fixed-size summaries, written only after owned-game
+        // cleanup. Disk failures cannot replace the primary stop reason.
+        using var deadline = new CancellationTokenSource(500);
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(sessionDirectory, name),
+                JsonSerializer.Serialize(value, new JsonSerializerOptions { WriteIndented = true }), deadline.Token);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or OperationCanceledException) { }
     }
 
     internal void AcceptRecord(byte[] data)
@@ -167,7 +181,8 @@ internal sealed class LockstepPeer
                 channel.Send(message, token).GetAwaiter().GetResult();
             }
             var future = checked(frame + (uint)manifest.Delay);
-            var localInput = (testInput?.Invoke(frame) ?? native.LocalInput(frame)) & 0x1fb;
+            var localInput = testInput?.Invoke(frame) ?? native.LocalInput(frame);
+            if ((localInput & ~0x1fbu) != 0) throw new IOException("ゲームから未対応の入力を受信しました。");
             LastLocalMask = localInput;
             scheduled.Add(future, localInput);
             var inputMessage = Record(0x10, future, 20);
@@ -215,11 +230,34 @@ internal sealed class LockstepPeer
         GameSession? game = null;
         Task<GameSession>? starting = null;
         Task? pump = null;
-        var receiver = Receive(lifetime.Token);
+        Exception? transportFailure = null;
+        // A peer can disconnect while assets are still being prepared, before
+        // the start/ready waits exist. Cancel that work as soon as receive ends.
+        async Task ReceiveLifetime()
+        {
+            try { await Receive(lifetime.Token); }
+            catch (Exception error)
+            {
+                if (!lifetime.IsCancellationRequested) Interlocked.CompareExchange(ref transportFailure, error, null);
+                lifetime.Cancel();
+                throw;
+            }
+        }
+        var receiver = ReceiveLifetime();
         var ping = Task.Run(async () =>
         {
-            while (!startup.IsCancellationRequested)
-            { await channel.Send(Record(0x13, 0, 16), startup.Token); await Task.Delay(500, startup.Token); }
+            try
+            {
+                while (!startup.IsCancellationRequested)
+                { await channel.Send(Record(0x13, 0, 16), startup.Token); await Task.Delay(500, startup.Token); }
+            }
+            catch (OperationCanceledException) when (startup.IsCancellationRequested) { throw; }
+            catch (Exception error)
+            {
+                Interlocked.CompareExchange(ref transportFailure, error, null);
+                lifetime.Cancel();
+                throw;
+            }
         });
         try
         {
@@ -243,6 +281,13 @@ internal sealed class LockstepPeer
             var exited = game.Process.WaitForExitAsync(lifetime.Token);
             var finished = await Task.WhenAny(pump, receiver, exited);
             await finished;
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested && Volatile.Read(ref transportFailure) != null)
+        {
+            // Linked cancellation stops dependent work; preserve the transport
+            // failure as the user-visible cause rather than calling it "cancel".
+            ExceptionDispatchInfo.Capture(Volatile.Read(ref transportFailure)!).Throw();
+            throw;
         }
         catch (OperationCanceledException) when (!started && startup.IsCancellationRequested && !lifetime.IsCancellationRequested)
         { throw new TimeoutException("双方のゲームの開始準備が120秒以内に完了しませんでした。"); }
@@ -272,7 +317,8 @@ internal sealed class LockstepPeer
                 {
                     DigestTrace[] tail;
                     lock (gate) tail = trace.ToArray();
-                    File.WriteAllText(Path.Combine(sessionDirectory, "digest-tail.json"), JsonSerializer.Serialize(tail));
+                    if (syncFailure != null) await WriteDiagnostic("sync-failure.json", syncFailure);
+                    await WriteDiagnostic("digest-tail.json", tail);
                 }
             }
         }

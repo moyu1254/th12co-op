@@ -1,0 +1,102 @@
+{
+  "passed": true,
+  "version": "retail-1.00b",
+  "rulesVersion": 3,
+  "nativeSha256": "e18323aaa08ace40c947a676eb7b0d89d956ca44e60891001d52c0302d436961",
+  "requestedCases": 7,
+  "scope": "Reimu A; Practice Normal or Extra; first180 gameplay frames, not full clears",
+  "cases": [
+    {
+      "mode": "practice",
+      "stage": 1,
+      "passed": true,
+      "exitCode": 0,
+      "matchedDigestFrames": 778,
+      "gameplayFrames": 180,
+      "maxObservedEcl": {
+        "enemies": 11,
+        "contexts": 14,
+        "asyncContexts": 3
+      }
+    },
+    {
+      "mode": "practice",
+      "stage": 2,
+      "passed": true,
+      "exitCode": 0,
+      "matchedDigestFrames": 802,
+      "gameplayFrames": 180,
+      "maxObservedEcl": {
+        "enemies": 3,
+        "contexts": 5,
+        "asyncContexts": 2
+      }
+    },
+    {
+      "mode": "practice",
+      "stage": 3,
+      "passed": true,
+      "exitCode": 0,
+      "matchedDigestFrames": 826,
+      "gameplayFrames": 180,
+      "maxObservedEcl": {
+        "enemies": 2,
+        "contexts": 4,
+        "asyncContexts": 2
+      }
+    },
+    {
+      "mode": "practice",
+      "stage": 4,
+      "passed": true,
+      "exitCode": 0,
+      "matchedDigestFrames": 850,
+      "gameplayFrames": 180,
+      "maxObservedEcl": {
+        "enemies": 3,
+        "contexts": 5,
+        "asyncContexts": 3
+      }
+    },
+    {
+      "mode": "practice",
+      "stage": 5,
+      "passed": true,
+      "exitCode": 0,
+      "matchedDigestFrames": 874,
+      "gameplayFrames": 180,
+      "maxObservedEcl": {
+        "enemies": 4,
+        "contexts": 7,
+        "asyncContexts": 3
+      }
+    },
+    {
+      "mode": "practice",
+      "stage": 6,
+      "passed": true,
+      "exitCode": 0,
+      "matchedDigestFrames": 898,
+      "gameplayFrames": 180,
+      "maxObservedEcl": {
+        "enemies": 6,
+        "contexts": 12,
+        "asyncContexts": 6
+      }
+    },
+    {
+      "mode": "extra",
+      "stage": 7,
+      "passed": true,
+      "exitCode": 0,
+      "matchedDigestFrames": 730,
+      "gameplayFrames": 180,
+      "maxObservedEcl": {
+        "enemies": 2,
+        "contexts": 3,
+        "asyncContexts": 1
+      }
+    }
+  ],
+  "completedCases": 7
+}

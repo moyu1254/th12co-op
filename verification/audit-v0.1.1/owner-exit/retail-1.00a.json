@@ -1,0 +1,27 @@
+{
+  "passed": true,
+  "version": "retail-1.00a",
+  "gameDirectory": "[workspace]\\game-test-retail-1.00a-smoke",
+  "launcherReport": "[workspace]\\build\\audit-release-owner-exit\\retail-1.00a-launcher.txt",
+  "gameTerminationAttempted": false,
+  "binaries": {
+    "TH12Coop.exe": "9868bd3829248d24e648c0a5d75b62ac55e5ed8671f875d52743afe0961499bb",
+    "TH12Coop.dll": "cf816766dc3cba45c3a42fd561bb1cc4d2186d083cc99d0ae17e643fe5924f0c",
+    "th12coop-native.dll": "e18323aaa08ace40c947a676eb7b0d89d956ca44e60891001d52c0302d436961",
+    "injector.exe": "1f4d99f614e27214d49c11feada60b29943797b1c5d44a0ef633987f85e65749"
+  },
+  "gameExeSha256": "e2939ba3f92e427216a619191a682a8197cc59a64eab99302a7b98811d6120a9",
+  "identity": {
+    "state": "handle_verified",
+    "creationTicks": 134377428848920166,
+    "image": "[workspace]\\game-test-retail-1.00a-smoke\\th12.exe",
+    "identityMatched": true
+  },
+  "launcherExitCode": 0,
+  "gameWaitResult": 0,
+  "gameExitCode": 0,
+  "exitEvidence": "Original process handle became signaled after launcher exit",
+  "gameExited": true,
+  "observedAfterLauncherExitMs": 0.0,
+  "elapsedSeconds": 1.469
+}

@@ -1,5 +1,6 @@
 """End-to-end TH12 retail checks driven through the smoke DLL input API.
-Runs only the isolated game-smoke copy; never writes game process memory.
+Runs only isolated workspace game-smoke/game-test-* copies; never writes game
+process memory.
 """
 import argparse, ctypes, hashlib, json, struct, subprocess, sys, time
 from ctypes import wintypes
@@ -62,6 +63,9 @@ class Game:
         except Exception:
             self.close();raise
     def _start(self,folder):
+        folder=Path(folder).resolve()
+        if folder.parent!=ROOT.resolve() or not (folder.name=='game-smoke' or folder.name.startswith('game-test-')):
+            raise ValueError('Smoke fixtures require a direct workspace game-smoke or game-test-* folder')
         self.folder=folder
         cfg=bytearray((folder/'th12.cfg').read_bytes())
         assert len(cfg)==60

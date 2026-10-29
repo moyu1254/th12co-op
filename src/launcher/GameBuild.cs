@@ -63,8 +63,7 @@ internal sealed record GameBuild(string Id, string Label, string ExeHash, string
             if ((await File.ReadAllTextAsync(path, token)).Trim() != SteamAppId) throw new IOException("Steam App IDがTH12と一致しません。");
             return;
         }
-        await using var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-        await file.WriteAsync(Encoding.ASCII.GetBytes(SteamAppId), token);
+        await GameConfiguration.WriteNew(path, Encoding.ASCII.GetBytes(SteamAppId), token);
     }
 }
 
@@ -131,6 +130,7 @@ internal static class GameLibrary
         }
         if (source.Equals(destination, StringComparison.OrdinalIgnoreCase))
         {
+            await GameConfiguration.Prepare(destination, source, token);
             if (choice.Build.Steam) await GameBuild.PrepareSteamIdentity(destination, token);
             return source;
         }
@@ -154,16 +154,7 @@ internal static class GameLibrary
             }
             Directory.CreateDirectory(destination);
             foreach (var name in missing) File.Move(Path.Combine(stage, name), Path.Combine(destination, name));
-            var configPath = Path.Combine(destination, "th12.cfg");
-            if (!File.Exists(configPath))
-            {
-                var config = Path.Combine(source, "th12.cfg");
-                var contents = File.Exists(config) ? await File.ReadAllBytesAsync(config, token) : [];
-                if (contents.Length != 60 || System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(contents) != 0x00120001)
-                    contents = await File.ReadAllBytesAsync(Path.Combine(AppContext.BaseDirectory, "th12-online.cfg"), token);
-                await using var output = new FileStream(configPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-                await output.WriteAsync(contents, token);
-            }
+            await GameConfiguration.Prepare(destination, source, token);
             if (choice.Build.Steam) await GameBuild.PrepareSteamIdentity(destination, token);
             return destination;
         }

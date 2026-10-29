@@ -1,6 +1,7 @@
 #pragma once
 #ifdef COOP_SMOKE_TEST
 #include "coop_audit_resources.h"
+#include "coop_audit_sync.h"
 #if __has_include("coop_audit_targeting.h")
 #include "coop_audit_targeting.h"
 #define COOP_AUDIT_TARGETING
@@ -39,6 +40,7 @@ static bool Poll(){
  const uint32_t family=state->family,caseId=state->caseId;
  uint32_t result=0x20000000u;
  if(family==1)result=RunResourceAudit(caseId,state->details);
+ if(family==5)result=RunSyncAudit(caseId,state->details);
  if(family==4)result=coop_campaign::Configure(caseId,state->details);
 #ifdef COOP_AUDIT_TARGETING
  if(family==2)result=RunTargetingAudit(caseId,state->details);

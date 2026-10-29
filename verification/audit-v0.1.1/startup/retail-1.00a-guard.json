@@ -1,0 +1,12 @@
+{
+  "passed": true,
+  "rejected": true,
+  "message": "TH12がすでに起動しています（PID: 25236）。開いているTH12を終了してから、もう一度開始してください。",
+  "before": [
+    25236
+  ],
+  "after": [
+    25236
+  ],
+  "configurationUnchanged": true
+}

@@ -78,7 +78,7 @@ internal static class OnlineSession
                         var peer = await SecureChannel.Accept(raw, identity, lifetime.Token);
                         if (!authenticated.Writer.TryWrite(peer)) peer.Dispose();
                     }
-                    catch (Exception e) when (e is IOException or AuthenticationException or OperationCanceledException or SocketException)
+                    catch (Exception e) when (e is IOException or AuthenticationException or OperationCanceledException or SocketException or TimeoutException)
                     { raw.Dispose(); }
                     finally { slots.Release(); }
                 });

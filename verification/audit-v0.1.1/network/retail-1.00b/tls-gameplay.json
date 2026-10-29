@@ -1,0 +1,39 @@
+{
+  "passed": true,
+  "failure": null,
+  "peerErrors": [],
+  "seconds": 60,
+  "elapsedMilliseconds": 60736,
+  "protocol": 3,
+  "hostGame": {
+    "build": "retail-1.00b",
+    "exeHash": "d8d644d2e64957a3031b1a1399d0502e1ddaa5252d2c4e492770ad6717827628"
+  },
+  "guestGame": {
+    "build": "retail-1.00b",
+    "exeHash": "d8d644d2e64957a3031b1a1399d0502e1ddaa5252d2c4e492770ad6717827628"
+  },
+  "disconnectTest": false,
+  "disconnectRequested": false,
+  "disconnectMilliseconds": null,
+  "ownedProcessesExited": true,
+  "host": {
+    "CommittedFrame": 3430,
+    "ConfirmedFrame": 3428,
+    "StageObserved": true,
+    "MaximumP1Shots": 26,
+    "MaximumP2Shots": 26,
+    "minP2X": -184,
+    "maxP2X": 184
+  },
+  "guest": {
+    "CommittedFrame": 3429,
+    "ConfirmedFrame": 3428,
+    "StageObserved": true,
+    "MaximumP1Shots": 26,
+    "MaximumP2Shots": 26,
+    "minP2X": -184,
+    "maxP2X": 184
+  },
+  "scope": "Two actual TH12 processes, separate game state and working directories, pinned TLS 1.3 input lockstep over loopback. No video/audio stream. Not a second physical PC or WAN test."
+}

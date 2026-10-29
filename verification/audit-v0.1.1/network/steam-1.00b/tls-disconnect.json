@@ -1,0 +1,44 @@
+{
+  "passed": true,
+  "failure": null,
+  "peerErrors": [
+    {
+      "peer": "host",
+      "error": "System.IO.IOException: 相手がセッションを終了しました。\r\n   at TH12Coop.LockstepPeer.AcceptRecord(Byte[] data) in [workspace]\\src\\launcher\\LockstepPeer.cs:line 138\r\n   at TH12Coop.LockstepPeer.Receive(CancellationToken token) in [workspace]\\src\\launcher\\LockstepPeer.cs:line 145\r\n   at TH12Coop.LockstepPeer.<>c__DisplayClass66_1.<<Run>g__ReceiveLifetime|0>d.MoveNext() in [workspace]\\src\\launcher\\LockstepPeer.cs:line 238\r\n--- End of stack trace from previous location ---\r\n   at TH12Coop.LockstepPeer.Run(OnlineProfile profile, Boolean testInstance, Func`2 testInput, Action`1 status, CancellationToken token) in [workspace]\\src\\launcher\\LockstepPeer.cs:line 313\r\n   at TH12Coop.LockstepPeer.Run(OnlineProfile profile, Boolean testInstance, Func`2 testInput, Action`1 status, CancellationToken token)\r\n   at TH12Coop.OnlineSession.Host(String gameDirectory, Int32 port, RoomIdentity identity, Int32 delay, Action`1 status, CancellationToken token, String testNativePath, Boolean testInstance, Func`2 testInput, Action`1 observe) in [workspace]\\src\\launcher\\OnlineSession.cs:line 37\r\n   at TH12Coop.SelfTests.Lockstep(String gameDirectory, String nativePath, Int32 seconds, Boolean disconnectTest, String guestGameDirectory) in [workspace]\\src\\launcher\\LockstepTest.cs:line 70"
+    }
+  ],
+  "seconds": 25,
+  "elapsedMilliseconds": 25840,
+  "protocol": 3,
+  "hostGame": {
+    "build": "steam-1.00b",
+    "exeHash": "eb275a8c285fd8450fa5ac79fa730a759aeca8b2904aeb16d30e65859372a459"
+  },
+  "guestGame": {
+    "build": "steam-1.00b",
+    "exeHash": "eb275a8c285fd8450fa5ac79fa730a759aeca8b2904aeb16d30e65859372a459"
+  },
+  "disconnectTest": true,
+  "disconnectRequested": true,
+  "disconnectMilliseconds": 27,
+  "ownedProcessesExited": true,
+  "host": {
+    "CommittedFrame": 1200,
+    "ConfirmedFrame": 1199,
+    "StageObserved": true,
+    "MaximumP1Shots": 26,
+    "MaximumP2Shots": 26,
+    "minP2X": -184,
+    "maxP2X": 184
+  },
+  "guest": {
+    "CommittedFrame": 1202,
+    "ConfirmedFrame": 1199,
+    "StageObserved": true,
+    "MaximumP1Shots": 26,
+    "MaximumP2Shots": 26,
+    "minP2X": -184,
+    "maxP2X": 184
+  },
+  "scope": "Two actual TH12 processes, separate game state and working directories, pinned TLS 1.3 input lockstep over loopback. No video/audio stream. Not a second physical PC or WAN test."
+}

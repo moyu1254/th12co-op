@@ -1,0 +1,124 @@
+{
+  "passed": true,
+  "checkpoints": [
+    {
+      "name": "initial",
+      "frame": 660,
+      "digest": [
+        660,
+        4226135522,
+        168844238,
+        7,
+        1,
+        257,
+        138,
+        62837
+      ],
+      "bombs": 2,
+      "lives": 2
+    },
+    {
+      "name": "p2_bomb",
+      "frame": 753,
+      "digest": [
+        753,
+        1972641800,
+        1978635009,
+        7,
+        1,
+        257,
+        231,
+        48793
+      ],
+      "bombs": 1,
+      "lives": 2
+    },
+    {
+      "name": "retry",
+      "frame": 999,
+      "digest": [
+        999,
+        2651827377,
+        3132889051,
+        7,
+        1,
+        257,
+        56,
+        48793
+      ],
+      "bombs": 2,
+      "lives": 2
+    },
+    {
+      "name": "retry_shooting",
+      "frame": 1179,
+      "digest": [
+        1179,
+        1255757184,
+        2123301460,
+        7,
+        1,
+        257,
+        236,
+        1824
+      ],
+      "bombs": 2,
+      "lives": 2
+    },
+    {
+      "name": "title_released",
+      "frame": 1378,
+      "digest": [
+        1378,
+        3945170495,
+        3708659424,
+        4,
+        1,
+        65535,
+        236,
+        1824
+      ],
+      "bombs": 2,
+      "lives": 2
+    },
+    {
+      "name": "reentered",
+      "frame": 1648,
+      "digest": [
+        1648,
+        3120918480,
+        826566918,
+        7,
+        1,
+        257,
+        138,
+        32382
+      ],
+      "bombs": 2,
+      "lives": 2
+    },
+    {
+      "name": "missing_input_resumed",
+      "frame": 1658,
+      "digest": [
+        1658,
+        1016387723,
+        1515269093,
+        7,
+        1,
+        257,
+        148,
+        7941
+      ],
+      "bombs": 2,
+      "lives": 2
+    }
+  ],
+  "game_folders": [
+    "[workspace]\\game-test-retail-1.00a-net-host",
+    "[workspace]\\game-test-retail-1.00a-net-guest"
+  ],
+  "exe_sha256": "e2939ba3f92e427216a619191a682a8197cc59a64eab99302a7b98811d6120a9",
+  "invalid_mask_rejected": true,
+  "completed_frames": 1658
+}

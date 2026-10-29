@@ -6,12 +6,13 @@ internal readonly record struct GameDigest(uint Frame, uint Low, uint High, uint
 
 internal sealed class NetBridge : IDisposable
 {
-    internal const uint Magic = 0x4e323154, Version = 1, Size = 12544, Capacity = 256, RulesVersion = 2;
+    internal const uint Magic = 0x4e323154, Version = 1, Size = 12544, Capacity = 256, RulesVersion = 3;
     private readonly MemoryMappedFile mapping;
     private readonly MemoryMappedViewAccessor memory;
     private readonly System.Threading.Timer heartbeat;
     private readonly EventWaitHandle request;
     private readonly EventWaitHandle commit;
+    private readonly object abortGate = new();
     private int disposed;
     private uint lastCommitted;
     public uint RequestedFrame => memory.ReadUInt32(36);
@@ -60,6 +61,7 @@ internal sealed class NetBridge : IDisposable
         var mask = memory.ReadUInt32(80);
         Thread.MemoryBarrier();
         if (sequence != frame || memory.ReadUInt32(84) != sequence) throw new IOException("ゲーム入力のフレーム番号が一致しません。");
+        if ((mask & ~0x1fbu) != 0) throw new IOException("ゲームから未対応の入力を受信しました。");
         return mask;
     }
 
@@ -92,16 +94,23 @@ internal sealed class NetBridge : IDisposable
 
     public void Abort(uint code = 1)
     {
-        if (Volatile.Read(ref disposed) != 0) return;
-        memory.Write(28, code == 0 ? 1u : code);
-        commit.Set(); request.Set();
+        lock (abortGate)
+        {
+            if (disposed != 0) return;
+            // A generic cleanup must not erase the original desync/error code.
+            if (memory.ReadUInt32(28) == 0) memory.Write(28, code == 0 ? 1u : code);
+            commit.Set(); request.Set();
+        }
     }
 
     public void Dispose()
     {
-        if (Volatile.Read(ref disposed) != 0) return;
-        Abort();
-        if (Interlocked.Exchange(ref disposed, 1) != 0) return;
+        lock (abortGate)
+        {
+            if (disposed != 0) return;
+            Abort();
+            Volatile.Write(ref disposed, 1);
+        }
         using var stopped = new ManualResetEvent(false);
         if (heartbeat.Dispose(stopped)) stopped.WaitOne();
         memory.Dispose(); mapping.Dispose(); request.Dispose(); commit.Dispose();

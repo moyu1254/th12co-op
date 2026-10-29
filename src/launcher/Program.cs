@@ -7,6 +7,8 @@ internal static class Program
     {
         if (args.Contains("--self-test"))
             return SelfTests.Run().GetAwaiter().GetResult();
+        if (args.Contains("--managed-audit-test"))
+            return SelfTests.ManagedAudit(Option(args, "--audit-filter")).GetAwaiter().GetResult();
         static string? Option(string[] arguments, string option)
         {
             var index = Array.IndexOf(arguments, option);

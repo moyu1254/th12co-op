@@ -6,6 +6,8 @@
 #include <string.h>
 #include <stdio.h>
 #include "game_layout.h"
+#include "coop_ecl_digest.h"
+#include "coop_projectile_digest.h"
 
 namespace coop_lockstep {
 constexpr uint32_t Magic=0x4e323154,Version=1,Capacity=256,Bytes=12544;
@@ -88,6 +90,14 @@ struct Hash {
  void word(uint32_t x){for(int i=0;i<4;i++){value^=(uint8_t)x;value*=1099511628211ull;x>>=8;}}
  void words(uintptr_t p,size_t bytes){for(size_t n=0;n<bytes;n+=4)word(at<uint32_t>(p+n));}
 };
+static uint32_t EnemyIndex(uintptr_t target){
+ if(!target)return 0;
+ auto manager=at<uintptr_t>(0x4b43dc),node=manager?at<uintptr_t>(manager+0x68):0;
+ uint32_t count=0;
+ while(node&&count<4096){++count;if(at<uintptr_t>(node)==target)return count;node=at<uintptr_t>(node+4);}
+ if(node)Fail(11);
+ return UINT32_MAX; // A non-null association outside the live list is distinct.
+}
 static void PlayerHash(Hash& h,unsigned char* p){
  h.word(p?1:0);if(!p)return;auto a=(uintptr_t)p;
  h.words(a+0x97c,0x14);h.word(at<uint32_t>(a+0xa28));
@@ -105,9 +115,10 @@ static void PlayerHash(Hash& h,unsigned char* p){
  }
 }
 static uint64_t Fingerprint(unsigned char* p1,unsigned char* p2,Digest& d){
+ coop_ecl_digest::BeginFrame();
  Hash total,parts[6];
  if(ruleFingerprint){const uint64_t rules=ruleFingerprint();parts[0].word((uint32_t)rules);parts[0].word((uint32_t)(rules>>32));}
- const uintptr_t globals[]={0x4b0c44,0x4b0c48,0x4b0c4c,0x4b0c50,0x4b0c54,0x4b0c58,0x4b0c78,0x4b0c90,0x4b0c94,0x4b0c98,0x4b0c9c,0x4b0ca0,0x4b0ca4,0x4b0ca8,0x4b0cb0,0x4b0cbc,0x4b0cc4,0x4b0cdc,0x4b2ed0};
+ const uintptr_t globals[]={0x4b0c44,0x4b0c48,0x4b0c4c,0x4b0c50,0x4b0c54,0x4b0c58,0x4b0c5c,0x4b0c60,0x4b0c64,0x4b0c78,0x4b0c90,0x4b0c94,0x4b0c98,0x4b0c9c,0x4b0ca0,0x4b0ca4,0x4b0ca8,0x4b0cb0,0x4b0cbc,0x4b0cc4,0x4b0cdc,0x4b2ed0};
  for(auto a:globals)parts[0].word(at<uint32_t>(a));
  parts[0].word(at<uint32_t>(0x4b0ccc));
  // Constructors zero these bounded common fields. Never hash ANM/payload or
@@ -116,6 +127,14 @@ static uint64_t Fingerprint(unsigned char* p1,unsigned char* p2,Digest& d){
  if(bomb){parts[0].words(bomb+0x14,12);parts[0].words(bomb+0x28,12);parts[0].word(at<uint32_t>(bomb+0x3c));parts[0].words(bomb+0x508,0x18);}
  auto spell=at<uintptr_t>(0x4b43cc);parts[0].word(spell?1u:0u);
  if(spell){parts[0].words(spell+0x24,12);parts[0].words(spell+0x78,12);}
+ // UFO::constructor zeroes all 0x6C bytes. Keep timer values, spawn/color,
+ // food and fullness, excluding speed/node/ANM pointers and cosmetic IDs.
+ auto ufo=at<uintptr_t>(0x4b4534);parts[0].word(ufo?1u:0u);
+ if(ufo){
+  parts[0].words(ufo+0x10,12);parts[0].words(ufo+0x28,12);
+  parts[0].word(at<uint32_t>(ufo+0x38));parts[0].words(ufo+0x48,12);
+  if(at<uint32_t>(ufo+0x2c))parts[0].word(EnemyIndex(at<uintptr_t>(ufo+0x34)));
+ }
  parts[0].word(at<uint16_t>(0x4ce568));parts[0].word(at<uint32_t>(0x4ce56c));
  auto game=at<uintptr_t>(0x4b44e8);parts[0].word(game?at<uint32_t>(game+0x60):0);
  PlayerHash(parts[1],p1);PlayerHash(parts[2],p2);
@@ -130,13 +149,7 @@ static uint64_t Fingerprint(unsigned char* p1,unsigned char* p2,Digest& d){
    // Retail 0x41318E adds 0x1040 to the list entry before EnemyData update.
    if(full){
     auto e=full+0x1040;parts[3].words(e+0x34,12);parts[3].words(e+0x68,12);parts[3].words(e+0x23c,0x30);parts[3].words(e+0x1608,0x18);parts[3].word(at<uint32_t>(e+0x16b8));
-    // ECL stacks contain raw instruction pointers; only verified scalar VM
-    // fields are included until instruction offsets can be normalized safely.
-    auto context=full+8;parts[3].word(at<uint32_t>(context));parts[3].words(context+0x1008,12);
-    parts[3].word(at<uint32_t>(context+0x1018));parts[3].word(at<uint8_t>(context+0x101c));
-    // Reset 0x411E22 and ins18/19 manipulate only bit zero; upper bits are
-    // uninitialized allocation contents, not ECL state.
-    parts[3].word(at<uint32_t>(context+0x1020)&1u);
+    if(!coop_ecl_digest::Append(parts[3],full)){Fail(15);return 0;}
    }
    node=at<uintptr_t>(node+4);
   }
@@ -146,12 +159,21 @@ static uint64_t Fingerprint(unsigned char* p1,unsigned char* p2,Digest& d){
  auto bullets=at<uintptr_t>(0x4b43c8);parts[4].word(bullets?1:0);
  if(bullets)for(uint32_t n=0;n<2000;n++){
   auto b=bullets+0x64+n*0x9f8;auto alive=at<uint16_t>(b+0x532);parts[4].word(alive);
-  if(alive){parts[4].word(n);parts[4].words(b+0x4bc,0x28);parts[4].word(at<uint32_t>(b+0x528));parts[4].word(at<uint32_t>(b+0x548));parts[4].words(b+0x550,0x1b0);parts[4].word(at<uint32_t>(b+0x9f4));}
+  if(alive){
+   const auto flags=at<uint32_t>(b+0x528);
+   parts[4].word(n);parts[4].words(b+0x4bc,0x28);parts[4].word(flags);parts[4].word(at<uint32_t>(b+0x548));parts[4].words(b+0x550,0x1b0);parts[4].word(at<uint32_t>(b+0x9f4));
+   coop_projectile_digest::Append(parts[4],b,flags);
+  }
  }
  auto items=at<uintptr_t>(0x4b44f0);parts[4].word(items?1:0);
  if(items)for(uint32_t n=0;n<2664;n++){
   auto item=items+0x14+n*0x9d8;auto alive=at<uint32_t>(item+0x9b0);parts[4].word(alive);
-  if(alive){parts[4].word(n);parts[4].word(at<uint32_t>(item+0x9b4));parts[4].words(item+0x96c,24);parts[4].words(item+0x988,12);parts[4].words(item+0x9bc,8);}
+  if(alive){
+   const uint32_t type=at<uint32_t>(item+0x9b4);
+   parts[4].word(n);parts[4].word(type);parts[4].words(item+0x96c,24);parts[4].words(item+0x988,12);parts[4].words(item+0x9bc,8);
+   if(type>=10&&type<=15)parts[4].words(item+0x99c,12); // Color timer, no speed pointer.
+   if(type>=16&&type<=18){parts[4].word(at<uint32_t>(item+0x984));parts[4].words(item+0x9c8,16);}
+  }
  }
  auto lasers=at<uintptr_t>(0x4b44f4);parts[4].word(lasers?1:0);
  if(lasers){
@@ -165,7 +187,7 @@ static uint64_t Fingerprint(unsigned char* p1,unsigned char* p2,Digest& d){
    parts[4].word(type);parts[4].word(at<uint32_t>(laser+0xc));
    parts[4].words(laser+0x14,12);parts[4].words(laser+0x28,12);parts[4].words(laser+0x3c,12);
    parts[4].words(laser+0x50,0x2c);parts[4].word(at<uint8_t>(laser+0x7c));
-   parts[4].word(at<uint32_t>(laser+0x430));parts[4].word(at<uint32_t>(laser+0x44c));
+   parts[4].words(laser+0x42c,8);parts[4].word(at<uint32_t>(laser+0x44c));
    if(kind==0x4a06ac){
     auto nodes=at<uint32_t>(laser+0x470);auto data=at<uintptr_t>(laser+0xf9c);
     if(nodes>256||(nodes&&!data)){Fail(13);return 0;}
@@ -197,7 +219,9 @@ static uint32_t Poll(uint32_t physical,unsigned char*& p1,unsigned char*& p2){
  if(h.status==4)for(;;)Sleep(10);
  MemoryBarrier();InterlockedExchange(&d.sequence,(LONG)completed);
  h.hashLo=d.lo;h.hashHi=d.hi;h.completed=completed;
- h.localMask=physical;h.localFrame=nextFrame;
+  // Native controller polling can produce non-gameplay bits (including 0x200).
+  // Convert at the producer; the launcher still rejects malformed IPC masks.
+  h.localMask=physical&0x1fbu;h.localFrame=nextFrame;
  h.waitSince=GetTickCount();MemoryBarrier();h.requested=nextFrame;h.status=2;
  if(requestEvent)SetEvent(requestEvent);
  auto& in=state->input[nextFrame%Capacity];
@@ -232,8 +256,8 @@ static bool Initialize(void(*writeLog)(const char*)){
  state=(Shared*)MapViewOfFile(mapping,FILE_MAP_ALL_ACCESS,0,0,Bytes);
  if(!state)return false;
  auto& h=state->h;
- if(h.magic!=Magic||h.version!=Version||h.bytes!=Bytes||h.capacity!=Capacity||h.rulesVersion!=2||!(h.flags&1)||(h.flags&~3u)){Fail(6);return false;}
- h.rulesVersion=2;
+ if(h.magic!=Magic||h.version!=Version||h.bytes!=Bytes||h.capacity!=Capacity||h.rulesVersion!=3||!(h.flags&1)||(h.flags&~3u)){Fail(6);return false;}
+ h.rulesVersion=3;
  sprintf_s(name,"Local\\TH12CoopNetRequest_%lu",GetCurrentProcessId());requestEvent=OpenEventA(EVENT_MODIFY_STATE,FALSE,name);
  sprintf_s(name,"Local\\TH12CoopNetCommit_%lu",GetCurrentProcessId());commitEvent=OpenEventA(SYNCHRONIZE,FALSE,name);
  if(h.flags&2){
