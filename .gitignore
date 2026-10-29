@@ -1,0 +1,27 @@
+# Local original-game files and private saves are never source distribution content.
+/game/
+/game-*/
+/sessions/
+/.cache/
+/build/
+/dist/
+/release/
+/artifacts/
+/research/
+/.prepare-*/
+**/bin/
+**/obj/
+**/__pycache__/
+.vs/
+*.user
+*.suo
+*.log
+*.dmp
+*.lnk
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.key
+*.pem

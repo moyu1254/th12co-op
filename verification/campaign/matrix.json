@@ -1,0 +1,21 @@
+{
+  "passed": true,
+  "completed": 2,
+  "total": 2,
+  "results": [
+    {
+      "case": "story",
+      "passed": true,
+      "elapsedSeconds": 1057.891,
+      "result": "D:\\TH12CO-OP\\build\\rules2-campaign\\story.json",
+      "log": "D:\\TH12CO-OP\\build\\rules2-campaign-story.log"
+    },
+    {
+      "case": "extra",
+      "passed": true,
+      "elapsedSeconds": 365.734,
+      "result": "D:\\TH12CO-OP\\build\\rules2-campaign\\extra.json",
+      "log": "D:\\TH12CO-OP\\build\\rules2-campaign-extra.log"
+    }
+  ]
+}

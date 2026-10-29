@@ -1,0 +1,50 @@
+{
+  "passed": true,
+  "checks": [
+    {
+      "path": "D:\\TH12CO-OP\\game\\th12.exe",
+      "sha256": "e2939ba3f92e427216a619191a682a8197cc59a64eab99302a7b98811d6120a9",
+      "passed": true
+    },
+    {
+      "path": "D:\\TH12CO-OP\\game\\th12.dat",
+      "sha256": "086cd832c73fe170f9e1de467beabe53b73caf04bf94905acb081e3a70137ab7",
+      "passed": true
+    },
+    {
+      "path": "D:\\TH12CO-OP\\game\\thbgm.dat",
+      "sha256": "052a6f448a99ac829e23e4e724400129bd04a7201667a7447237ed7cd5ad5793",
+      "passed": true
+    },
+    {
+      "path": "C:\\Program Files (x86)\\上海アリス幻樂団\\東方星蓮船\\th12.exe",
+      "sha256": "d8d644d2e64957a3031b1a1399d0502e1ddaa5252d2c4e492770ad6717827628",
+      "passed": true
+    },
+    {
+      "path": "C:\\Program Files (x86)\\上海アリス幻樂団\\東方星蓮船\\th12.dat",
+      "sha256": "dca82df072ba51c4b74c3d41ea1cbdcb91f709ce7cfea23599ee52caa34f2d72",
+      "passed": true
+    },
+    {
+      "path": "C:\\Program Files (x86)\\上海アリス幻樂団\\東方星蓮船\\thbgm.dat",
+      "sha256": "052a6f448a99ac829e23e4e724400129bd04a7201667a7447237ed7cd5ad5793",
+      "passed": true
+    },
+    {
+      "path": "D:\\SteamLibrary\\steamapps\\common\\th12\\th12.exe",
+      "sha256": "eb275a8c285fd8450fa5ac79fa730a759aeca8b2904aeb16d30e65859372a459",
+      "passed": true
+    },
+    {
+      "path": "D:\\SteamLibrary\\steamapps\\common\\th12\\th12.dat",
+      "sha256": "dca82df072ba51c4b74c3d41ea1cbdcb91f709ce7cfea23599ee52caa34f2d72",
+      "passed": true
+    },
+    {
+      "path": "D:\\SteamLibrary\\steamapps\\common\\th12\\thbgm.dat",
+      "sha256": "052a6f448a99ac829e23e4e724400129bd04a7201667a7447237ed7cd5ad5793",
+      "passed": true
+    }
+  ]
+}

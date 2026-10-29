@@ -1,0 +1,53 @@
+{
+  "passed": true,
+  "scope": "Preprocessing only; no object/DLL compiled and no game launched.",
+  "header_before_sha256": "9350bb98082b870665b7c1dbc6b4fd9ea21a3349c2c17dac4c164987d3e29077",
+  "header_after_sha256": "6dd9887a2e1c7c24022fcf0421c429d0c2f31f5fc7d848e6e06c06289fc98b1f",
+  "frozen_baseline_header_hash_matched": true,
+  "production_else_bytes_identical": true,
+  "other_native_sources_unchanged": true,
+  "native_sources_compared": 18,
+  "changed_native_sources": [
+    "src/native/coop_audit_campaign.h"
+  ],
+  "changes_confined_to_COOP_SMOKE_TEST": true,
+  "production_token_bearing_lines_identical": true,
+  "production_preprocessor_blank_line_differences": [
+    {
+      "kind": "delete",
+      "before_line": 225512,
+      "before_blank_lines": 1,
+      "after_line": 225512,
+      "after_blank_lines": 0
+    }
+  ],
+  "production_preprocessed_nonblank_sha256": "f76f73e9e8ff6c4089da542504c2933a7e312106ded49a9d2651ead12565cdf9",
+  "preprocessing": [
+    {
+      "label": "before",
+      "command": "D:\\TH12CO-OP\\build\\rules2-campaign-equivalence\\preprocess-before.cmd",
+      "exit_code": 0,
+      "output": "D:\\TH12CO-OP\\build\\rules2-campaign-equivalence\\production-before.i",
+      "sha256": "c2489cd7e67cd0730a729488882c8f998e72f9be3ee430807fce70b5517354c9",
+      "bytes": 2962219,
+      "diagnostics": "th12coop.cpp\n"
+    },
+    {
+      "label": "after",
+      "command": "D:\\TH12CO-OP\\build\\rules2-campaign-equivalence\\preprocess-after.cmd",
+      "exit_code": 0,
+      "output": "D:\\TH12CO-OP\\build\\rules2-campaign-equivalence\\production-after.i",
+      "sha256": "afc191852490034caf76bdda33e584820f8108f386f9b47b256fa3f0c9741b27",
+      "bytes": 2962217,
+      "diagnostics": "th12coop.cpp\n"
+    }
+  ],
+  "unchanged_production_native_sha256": "d183c2bda08a5bf5ab1384c6f2a24efc37832ed810d49e5234c1efa02bec3e87",
+  "diagnostic_lineage": {
+    "prior_smoke_sha256": "7df85189ce0c4a6ea3a69fe77a8f7ba1f9b45b93c88e99bb6f665c10135fe37b",
+    "prior_scope": "41 rules fixtures, offline input/lifecycle/collision matrix, Extra/Practice mode checks; no campaign fixture activation.",
+    "corrected_smoke_sha256": "1585e00a27dece60520d7996d043fd30f18ba61b97d3e0c3095ae86a56b33b70",
+    "corrected_scope": "Natural-timing campaign diagnosis and explicitly rerun critical fixtures; runtime reports recorded separately.",
+    "change": "Remove native global timer-speed override from the smoke-only campaign fixture; report the actual native speed instead."
+  }
+}

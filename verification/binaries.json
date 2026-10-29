@@ -1,0 +1,209 @@
+{
+  "recordedAt": "2026-10-29T06:51:52.350976+00:00",
+  "runtime": "10.0.14",
+  "sdk": "10.0.403",
+  "protocol": 3,
+  "rules": 2,
+  "builds": [
+    {
+      "build": "retail-1.00a",
+      "files": {
+        "th12.exe": "e2939ba3f92e427216a619191a682a8197cc59a64eab99302a7b98811d6120a9",
+        "th12.dat": "086cd832c73fe170f9e1de467beabe53b73caf04bf94905acb081e3a70137ab7",
+        "thbgm.dat": "052a6f448a99ac829e23e4e724400129bd04a7201667a7447237ed7cd5ad5793"
+      }
+    },
+    {
+      "build": "retail-1.00b",
+      "files": {
+        "th12.exe": "d8d644d2e64957a3031b1a1399d0502e1ddaa5252d2c4e492770ad6717827628",
+        "th12.dat": "dca82df072ba51c4b74c3d41ea1cbdcb91f709ce7cfea23599ee52caa34f2d72",
+        "thbgm.dat": "052a6f448a99ac829e23e4e724400129bd04a7201667a7447237ed7cd5ad5793"
+      }
+    },
+    {
+      "build": "steam-1.00b",
+      "files": {
+        "th12.exe": "eb275a8c285fd8450fa5ac79fa730a759aeca8b2904aeb16d30e65859372a459",
+        "th12.dat": "dca82df072ba51c4b74c3d41ea1cbdcb91f709ce7cfea23599ee52caa34f2d72",
+        "thbgm.dat": "052a6f448a99ac829e23e4e724400129bd04a7201667a7447237ed7cd5ad5793"
+      }
+    }
+  ],
+  "files": [
+    {
+      "path": "dist/TH12Coop.exe",
+      "length": 162304,
+      "sha256": "2ebf7c45ee9556b035c75264f4ae854ae1f8f3555fc162a8e592882b63b9d19c"
+    },
+    {
+      "path": "dist/TH12Coop.dll",
+      "length": 173568,
+      "sha256": "8f07054b19dd5db1e31a20a97e2ddf2c1a2469ac57f5b72f777e5250cd3e52ca"
+    },
+    {
+      "path": "dist/th12coop-native.dll",
+      "length": 169984,
+      "sha256": "d183c2bda08a5bf5ab1384c6f2a24efc37832ed810d49e5234c1efa02bec3e87"
+    },
+    {
+      "path": "dist/injector.exe",
+      "length": 137216,
+      "sha256": "abb1e0bc76b8c9e9b10259507a20eafa4b2b7b1a4e2d29deea856d0f009eb44f"
+    },
+    {
+      "path": "dist/th12-online.cfg",
+      "length": 60,
+      "sha256": "9d3016fdf6f7c1395a399de7de0081b0fa766787b4e0c472a2564ca713833a8f"
+    },
+    {
+      "path": "dist/th12coop-smoke.dll",
+      "length": 195072,
+      "sha256": "1585e00a27dece60520d7996d043fd30f18ba61b97d3e0c3095ae86a56b33b70"
+    }
+  ],
+  "sources": [
+    {
+      "path": "src/injector/injector.cpp",
+      "sha256": "8e8a02881bb2e1fd1112df1532618745c7efd353a5b9792858d52181daebf125"
+    },
+    {
+      "path": "src/launcher/GameBuild.cs",
+      "sha256": "5625acb2669f207a3c06a1280ab746d8edaaa42092200a6a234d4afb421038e5"
+    },
+    {
+      "path": "src/launcher/GameSession.cs",
+      "sha256": "4843ec15a60fbb6ea135b06084a42e82d234fd70cc28d8708edb9418f50720ef"
+    },
+    {
+      "path": "src/launcher/LauncherForm.cs",
+      "sha256": "20a71191be4ec832d4af62e377b8e3b1a218f50ff1805e27f1f27ed54cbb3a45"
+    },
+    {
+      "path": "src/launcher/LockstepPeer.cs",
+      "sha256": "a18cc33a190570be58875e608e001ecb0ae58365bf876739858e18918614b66d"
+    },
+    {
+      "path": "src/launcher/LockstepTest.cs",
+      "sha256": "f6326c879955fae96f61e82e348fedf7e0e0ee3c4efa3050bcde656d86c8ad55"
+    },
+    {
+      "path": "src/launcher/NetBridge.cs",
+      "sha256": "48289c8ed321bcdd8430c067de25d4f2cfa51fb90bd742191d9f1df0e063d29d"
+    },
+    {
+      "path": "src/launcher/OnlineProfile.cs",
+      "sha256": "670c9976475bc08a5b0c8aad4e9b9ddeb1621a5a9162fefa714446fea9b88b12"
+    },
+    {
+      "path": "src/launcher/OnlineSession.cs",
+      "sha256": "4bed2cfc787e824be747d1cc9ea06f25bf51674e542e003eeb83083f4b908259"
+    },
+    {
+      "path": "src/launcher/OwnedGameJob.cs",
+      "sha256": "236c8d9ff7f776aa281bae03a67e5f58172b7897df6d1b0ac0a387e535984c36"
+    },
+    {
+      "path": "src/launcher/Program.cs",
+      "sha256": "eafb5a08265904001b0969da5de465944f5a4d21e731606fea04e02466d62ae5"
+    },
+    {
+      "path": "src/launcher/Protocol.cs",
+      "sha256": "e1d577fb32c2f747e04f06d7f7a9322d932ac78315541203f102e6a505cb2aca"
+    },
+    {
+      "path": "src/launcher/SelfTests.cs",
+      "sha256": "517d8a3ee0a35c3536d1cee5c3ca766e3b4f9a3dc695e5f2d5503e91f3d3b929"
+    },
+    {
+      "path": "src/launcher/StartupTest.cs",
+      "sha256": "7bedf8709c2db58ba8094c8640b716684e8e152cf041416522b6cb72a45e37e7"
+    },
+    {
+      "path": "src/launcher/TH12Coop.Launcher.csproj",
+      "sha256": "6ff181b9265e475cfb0bf2fcadf2829f2846d22014e6db6d553021f3e06b16a3"
+    },
+    {
+      "path": "src/native/coop_audit.h",
+      "sha256": "b18c100fc20c2bdab73f774cf1c235beda5f5816acddaf4d8d3d485433386478"
+    },
+    {
+      "path": "src/native/coop_audit_campaign.h",
+      "sha256": "6dd9887a2e1c7c24022fcf0421c429d0c2f31f5fc7d848e6e06c06289fc98b1f"
+    },
+    {
+      "path": "src/native/coop_audit_items.h",
+      "sha256": "49563184f91b97ba88ba267fd9b75d12a804e7fc20f658de13e7dcfcdcc9e3db"
+    },
+    {
+      "path": "src/native/coop_audit_resources.h",
+      "sha256": "78d8a5d1988c4e26e347fb80614a0aa39c110211cdf456b787ce7d5871b5eea2"
+    },
+    {
+      "path": "src/native/coop_audit_targeting.h",
+      "sha256": "b2fa73f5401641d976c3029ad68c92c66620c73dd46a2105f90c0c92606dbe83"
+    },
+    {
+      "path": "src/native/coop_boot.h",
+      "sha256": "99e88704df57aac96ec2da968763cc94b5f147b3196156791a502b50e624daa8"
+    },
+    {
+      "path": "src/native/coop_collision.h",
+      "sha256": "fff9478949e1172996dd3654ab7b5ebedbd8ee6658180eca65424398c79bf43a"
+    },
+    {
+      "path": "src/native/coop_effects.h",
+      "sha256": "576856d82e28093fd772a01551931b33546a25dac9ab15c0ebcd285c673931c2"
+    },
+    {
+      "path": "src/native/coop_force.h",
+      "sha256": "91ede9a2ed8a14f4d9f197b16561aa2f9d3d581cd51144f56a419b94dd1ced27"
+    },
+    {
+      "path": "src/native/coop_homing.h",
+      "sha256": "85672af42a9e97a462045407767f89da1605f6e56a5220cb785c6994275b043f"
+    },
+    {
+      "path": "src/native/coop_items.h",
+      "sha256": "b8f4c07463d6436330b2d669449d932928ba92f5889e7c83f2a3def12061a509"
+    },
+    {
+      "path": "src/native/coop_progression.h",
+      "sha256": "e06615b710b67b32a46f1268b6b0bba6057f1cfb7082b60baae0740879e8e391"
+    },
+    {
+      "path": "src/native/coop_resources.h",
+      "sha256": "64a7862e41a53ffb81bbccb2fb3f071f36137a27f337f703e0f64ae25b4a8b1f"
+    },
+    {
+      "path": "src/native/coop_targeting.h",
+      "sha256": "d2f3ac50f3b82627c7cd69d2f00983ca565ea5b9171c8ef58a958017580af656"
+    },
+    {
+      "path": "src/native/game_layout.h",
+      "sha256": "314962b356e5eb9b3768bebcc313e7ba6c79b4667bb68de966e74c5f8c0d31c9"
+    },
+    {
+      "path": "src/native/lockstep.h",
+      "sha256": "146590ed82d4af42e23ee6ce2e220f074c5caac7f8116b00ce731665f814914d"
+    },
+    {
+      "path": "src/native/patch.h",
+      "sha256": "9c9f3f7bf21dd2b1c4a625aca9503661e7fb6636ff75d48df1501549f130d3b7"
+    },
+    {
+      "path": "src/native/th12coop.cpp",
+      "sha256": "e0e21f2699ac1faa80815070ec32f5658b68415abff0ed0a1866ad88c7b573b4"
+    }
+  ],
+  "diagnosticBuilds": [
+    {
+      "sha256": "7df85189ce0c4a6ea3a69fe77a8f7ba1f9b45b93c88e99bb6f665c10135fe37b",
+      "scope": "41 rule fixtures, 18 offline shot cases plus lifecycle/collision, 7 mode cases; campaign acceleration not enabled in these tests"
+    },
+    {
+      "sha256": "1585e00a27dece60520d7996d043fd30f18ba61b97d3e0c3095ae86a56b33b70",
+      "scope": "Campaign with native timing and five critical regression fixtures; only smoke-only campaign timing code changed"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "passed": true,
+  "version": "5.1.26100.9711",
+  "checks": [
+    {
+      "path": "build.ps1",
+      "syntaxErrors": 0,
+      "utf8Bom": true,
+      "passed": true
+    },
+    {
+      "path": "scripts/Prepare-Game.ps1",
+      "syntaxErrors": 0,
+      "utf8Bom": true,
+      "passed": true
+    },
+    {
+      "path": "scripts/Package.ps1",
+      "syntaxErrors": 0,
+      "utf8Bom": true,
+      "passed": true
+    }
+  ]
+}

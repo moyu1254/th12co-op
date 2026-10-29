@@ -1,0 +1,30 @@
+{
+  "passed": true,
+  "version": "steam-1.00b",
+  "gameDirectory": "D:\\TH12CO-OP\\game-test-steam-1.00b-smoke",
+  "launcherReport": "D:\\TH12CO-OP\\build\\rules2-owner-exit\\steam-1.00b-launcher.txt",
+  "gameTerminationAttempted": false,
+  "binaries": {
+    "TH12Coop.exe": "2ebf7c45ee9556b035c75264f4ae854ae1f8f3555fc162a8e592882b63b9d19c",
+    "TH12Coop.dll": "8f07054b19dd5db1e31a20a97e2ddf2c1a2469ac57f5b72f777e5250cd3e52ca",
+    "th12coop-native.dll": "d183c2bda08a5bf5ab1384c6f2a24efc37832ed810d49e5234c1efa02bec3e87",
+    "injector.exe": "abb1e0bc76b8c9e9b10259507a20eafa4b2b7b1a4e2d29deea856d0f009eb44f"
+  },
+  "gameExeSha256": "eb275a8c285fd8450fa5ac79fa730a759aeca8b2904aeb16d30e65859372a459",
+  "launcherPid": 4356,
+  "identity": {
+    "state": "handle_verified",
+    "gamePid": 37292,
+    "creationTicks": 134377275548129124,
+    "image": "D:\\TH12CO-OP\\game-test-steam-1.00b-smoke\\th12.exe",
+    "identityMatched": true
+  },
+  "gamePid": 37292,
+  "launcherExitCode": 0,
+  "gameWaitResult": 0,
+  "gameExitCode": 0,
+  "exitEvidence": "Original process handle became signaled after launcher exit",
+  "gameExited": true,
+  "observedAfterLauncherExitMs": 16.0,
+  "elapsedSeconds": 1.766
+}

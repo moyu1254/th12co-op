@@ -1,0 +1,2 @@
+# Keep the byte-level fingerprints recorded in verification and preserve BOMs.
+* -text whitespace=blank-at-eol,space-before-tab,cr-at-eol,-blank-at-eof

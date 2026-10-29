@@ -1,0 +1,56 @@
+{
+  "passed": true,
+  "completed": 7,
+  "total": 7,
+  "results": [
+    {
+      "case": "extra",
+      "passed": true,
+      "elapsedSeconds": 17.625,
+      "result": "D:\\TH12CO-OP\\build\\rules2-modes\\extra.json",
+      "log": "D:\\TH12CO-OP\\build\\rules2-mode-extra.log"
+    },
+    {
+      "case": "practice-1",
+      "passed": true,
+      "elapsedSeconds": 18.625,
+      "result": "D:\\TH12CO-OP\\build\\rules2-modes\\practice-1.json",
+      "log": "D:\\TH12CO-OP\\build\\rules2-mode-practice-1.log"
+    },
+    {
+      "case": "practice-2",
+      "passed": true,
+      "elapsedSeconds": 19.156,
+      "result": "D:\\TH12CO-OP\\build\\rules2-modes\\practice-2.json",
+      "log": "D:\\TH12CO-OP\\build\\rules2-mode-practice-2.log"
+    },
+    {
+      "case": "practice-3",
+      "passed": true,
+      "elapsedSeconds": 19.688,
+      "result": "D:\\TH12CO-OP\\build\\rules2-modes\\practice-3.json",
+      "log": "D:\\TH12CO-OP\\build\\rules2-mode-practice-3.log"
+    },
+    {
+      "case": "practice-4",
+      "passed": true,
+      "elapsedSeconds": 20.281,
+      "result": "D:\\TH12CO-OP\\build\\rules2-modes\\practice-4.json",
+      "log": "D:\\TH12CO-OP\\build\\rules2-mode-practice-4.log"
+    },
+    {
+      "case": "practice-5",
+      "passed": true,
+      "elapsedSeconds": 20.625,
+      "result": "D:\\TH12CO-OP\\build\\rules2-modes\\practice-5.json",
+      "log": "D:\\TH12CO-OP\\build\\rules2-mode-practice-5.log"
+    },
+    {
+      "case": "practice-6",
+      "passed": true,
+      "elapsedSeconds": 20.828,
+      "result": "D:\\TH12CO-OP\\build\\rules2-modes\\practice-6.json",
+      "log": "D:\\TH12CO-OP\\build\\rules2-mode-practice-6.log"
+    }
+  ]
+}

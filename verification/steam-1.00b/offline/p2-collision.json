@@ -1,0 +1,79 @@
+{
+  "game": "D:\\TH12CO-OP\\game-test-steam-1.00b-smoke",
+  "exe_sha256": "eb275a8c285fd8450fa5ac79fa730a759aeca8b2904aeb16d30e65859372a459",
+  "states": [
+    [
+      1,
+      0
+    ],
+    [
+      1,
+      1
+    ],
+    [
+      1,
+      2
+    ],
+    [
+      1,
+      4
+    ]
+  ],
+  "lives_before": 2,
+  "p2_hit_with_p1_healthy": {
+    "magic": 1345466708,
+    "version": 1,
+    "p1input": 0,
+    "p2input": 0,
+    "flags": 3,
+    "status": 2,
+    "frame": 327,
+    "p1x": -184.0,
+    "p1y": 400.0,
+    "p2x": 140.109375,
+    "p2y": 93.890625,
+    "heartbeat": 81749843,
+    "p1state": 1,
+    "p2state": 4,
+    "p1bullets": 0,
+    "p2bullets": 0
+  },
+  "respawn": {
+    "magic": 1345466708,
+    "version": 1,
+    "p1input": 0,
+    "p2input": 0,
+    "flags": 3,
+    "status": 2,
+    "frame": 425,
+    "p1x": -184.0,
+    "p1y": 400.0,
+    "p2x": 0.0,
+    "p2y": 400.0,
+    "heartbeat": 81751468,
+    "p1state": 1,
+    "p2state": 1,
+    "p1bullets": 0,
+    "p2bullets": 0
+  },
+  "lives_after": 1,
+  "post_respawn_controls": {
+    "magic": 1345466708,
+    "version": 1,
+    "p1input": 0,
+    "p2input": 129,
+    "flags": 3,
+    "status": 2,
+    "frame": 437,
+    "p1x": -184.0,
+    "p1y": 400.0,
+    "p2x": 54.0,
+    "p2y": 400.0,
+    "heartbeat": 81751671,
+    "p1state": 1,
+    "p2state": 1,
+    "p1bullets": 0,
+    "p2bullets": 16
+  },
+  "passed": true
+}

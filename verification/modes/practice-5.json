@@ -1,0 +1,1369 @@
+{
+  "passed": true,
+  "mode": "practice",
+  "stage": 5,
+  "shot": 0,
+  "rank": 1,
+  "game": "D:\\TH12CO-OP\\game-mode-tests\\practice-5-0-0668de7174",
+  "freshScores": true,
+  "checks": {
+    "practiceSelection": [
+      8,
+      2,
+      4
+    ],
+    "modeEntry": {
+      "telemetry": {
+        "magic": 1345466708,
+        "version": 1,
+        "p1input": 0,
+        "p2input": 0,
+        "flags": 3,
+        "status": 2,
+        "frame": 3,
+        "p1x": -32.0,
+        "p1y": 400.0,
+        "p2x": 32.0,
+        "p2y": 400.0,
+        "heartbeat": 81263656,
+        "p1state": 1,
+        "p2state": 1,
+        "p1bullets": 0,
+        "p2bullets": 0
+      },
+      "stage": 5,
+      "rank": 1,
+      "character": 0,
+      "weapon": 0,
+      "modeFlags": 16,
+      "bombs": 2,
+      "gameTime": 3,
+      "stageTime": 3,
+      "activationCount": 1
+    },
+    "twoPlayerControls": {
+      "magic": 1345466708,
+      "version": 1,
+      "p1input": 65,
+      "p2input": 129,
+      "flags": 3,
+      "status": 2,
+      "frame": 15,
+      "p1x": -86.0,
+      "p1y": 400.0,
+      "p2x": 86.0,
+      "p2y": 400.0,
+      "heartbeat": 81263859,
+      "p1state": 1,
+      "p2state": 1,
+      "p1bullets": 24,
+      "p2bullets": 24
+    },
+    "p2BombBeforeRetry": {
+      "telemetry": {
+        "magic": 1345466708,
+        "version": 1,
+        "p1input": 0,
+        "p2input": 0,
+        "flags": 3,
+        "status": 2,
+        "frame": 31,
+        "p1x": -86.0,
+        "p1y": 400.0,
+        "p2x": 86.0,
+        "p2y": 400.0,
+        "heartbeat": 81264125,
+        "p1state": 1,
+        "p2state": 1,
+        "p1bullets": 12,
+        "p2bullets": 12
+      },
+      "stage": 5,
+      "rank": 1,
+      "character": 0,
+      "weapon": 0,
+      "modeFlags": 16,
+      "bombs": 1,
+      "gameTime": 31,
+      "stageTime": 31,
+      "activationCount": 1
+    },
+    "retry": {
+      "telemetry": {
+        "magic": 1345466708,
+        "version": 1,
+        "p1input": 0,
+        "p2input": 0,
+        "flags": 3,
+        "status": 2,
+        "frame": 32,
+        "p1x": -32.0,
+        "p1y": 400.0,
+        "p2x": 32.0,
+        "p2y": 400.0,
+        "heartbeat": 81266750,
+        "p1state": 1,
+        "p2state": 1,
+        "p1bullets": 0,
+        "p2bullets": 0
+      },
+      "stage": 5,
+      "rank": 1,
+      "character": 0,
+      "weapon": 0,
+      "modeFlags": 16,
+      "bombs": 2,
+      "gameTime": 1,
+      "stageTime": 1,
+      "activationCount": 2
+    },
+    "retryEvidence": {
+      "stageTimerReset": {
+        "before": 31,
+        "after": 1
+      },
+      "observations": [
+        {
+          "gameTime": 31,
+          "stageTime": 31,
+          "bombs": 1,
+          "activationCount": 1
+        },
+        {
+          "gameTime": 31,
+          "stageTime": 31,
+          "bombs": 1,
+          "activationCount": 1
+        },
+        {
+          "gameTime": 31,
+          "stageTime": 31,
+          "bombs": 1,
+          "activationCount": 1
+        },
+        {
+          "gameTime": 31,
+          "stageTime": 31,
+          "bombs": 1,
+          "activationCount": 1
+        },
+        {
+          "gameTime": 31,
+          "stageTime": 31,
+          "bombs": 1,
+          "activationCount": 1
+        },
+        {
+          "gameTime": 31,
+          "stageTime": 31,
+          "bombs": 1,
+          "activationCount": 1
+        },
+        {
+          "gameTime": 31,
+          "stageTime": 31,
+          "bombs": 1,
+          "activationCount": 1
+        },
+        {
+          "gameTime": 31,
+          "stageTime": 31,
+          "bombs": 1,
+          "activationCount": 1
+        },
+        {
+          "gameTime": 31,
+          "stageTime": 31,
+          "bombs": 1,
+          "activationCount": 1
+        },
+        {
+          "gameTime": 31,
+          "stageTime": 31,
+          "bombs": 1,
+          "activationCount": 1
+        },
+        {
+          "gameTime": 31,
+          "stageTime": 31,
+          "bombs": 1,
+          "activationCount": 1
+        },
+        {
+          "gameTime": 31,
+          "stageTime": 31,
+          "bombs": 1,
+          "activationCount": 1
+        },
+        {
+          "gameTime": 31,
+          "stageTime": 31,
+          "bombs": 1,
+          "activationCount": 1
+        },
+        {
+          "gameTime": 31,
+          "stageTime": 31,
+          "bombs": 1,
+          "activationCount": 1
+        },
+        {
+          "gameTime": 31,
+          "stageTime": 31,
+          "bombs": 1,
+          "activationCount": 1
+        },
+        {
+          "gameTime": 0,
+          "stageTime": 0,
+          "bombs": 2,
+          "activationCount": 1
+        },
+        {
+          "gameTime": 0,
+          "stageTime": 0,
+          "bombs": 2,
+          "activationCount": 1
+        },
+        {
+          "gameTime": 0,
+          "stageTime": 0,
+          "bombs": 2,
+          "activationCount": 1
+        },
+        {
+          "gameTime": 1,
+          "stageTime": 1,
+          "bombs": 2,
+          "activationCount": 2
+        }
+      ]
+    },
+    "retryShooting": {
+      "magic": 1345466708,
+      "version": 1,
+      "p1input": 1,
+      "p2input": 1,
+      "flags": 3,
+      "status": 2,
+      "frame": 44,
+      "p1x": -32.0,
+      "p1y": 400.0,
+      "p2x": 32.0,
+      "p2y": 400.0,
+      "heartbeat": 81266953,
+      "p1state": 1,
+      "p2state": 1,
+      "p1bullets": 24,
+      "p2bullets": 24
+    },
+    "titleTeardown": {
+      "magic": 1345466708,
+      "version": 1,
+      "p1input": 0,
+      "p2input": 0,
+      "flags": 3,
+      "status": 1,
+      "frame": 62,
+      "p1x": -32.0,
+      "p1y": 400.0,
+      "p2x": 32.0,
+      "p2y": 400.0,
+      "heartbeat": 81269203,
+      "p1state": 1,
+      "p2state": 1,
+      "p1bullets": 0,
+      "p2bullets": 0
+    }
+  },
+  "exeSha256": "d8d644d2e64957a3031b1a1399d0502e1ddaa5252d2c4e492770ad6717827628",
+  "nativeSha256": "7df85189ce0c4a6ea3a69fe77a8f7ba1f9b45b93c88e99bb6f665c10135fe37b",
+  "pid": 20704,
+  "menuNavigation": [
+    {
+      "target": 2,
+      "before": {
+        "menu": [
+          1,
+          2,
+          0
+        ],
+        "choiceCount": 8,
+        "disabledCount": 0,
+        "disabled": [],
+        "timer": 2,
+        "rawInput": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "originalExtraFlags": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "queryAddress": "0x43f180",
+        "queryExtraFlags": [
+          16,
+          16,
+          16,
+          16,
+          16,
+          16
+        ]
+      },
+      "held": {
+        "menu": [
+          1,
+          2,
+          1
+        ],
+        "choiceCount": 8,
+        "disabledCount": 0,
+        "disabled": [],
+        "timer": 11,
+        "rawInput": [
+          32,
+          32,
+          0,
+          0,
+          0
+        ],
+        "originalExtraFlags": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "queryAddress": "0x43f180",
+        "queryExtraFlags": [
+          16,
+          16,
+          16,
+          16,
+          16,
+          16
+        ]
+      },
+      "released": {
+        "menu": [
+          1,
+          2,
+          1
+        ],
+        "choiceCount": 8,
+        "disabledCount": 0,
+        "disabled": [],
+        "timer": 25,
+        "rawInput": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "originalExtraFlags": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "queryAddress": "0x43f180",
+        "queryExtraFlags": [
+          16,
+          16,
+          16,
+          16,
+          16,
+          16
+        ]
+      }
+    },
+    {
+      "target": 2,
+      "before": {
+        "menu": [
+          1,
+          2,
+          1
+        ],
+        "choiceCount": 8,
+        "disabledCount": 0,
+        "disabled": [],
+        "timer": 25,
+        "rawInput": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "originalExtraFlags": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "queryAddress": "0x43f180",
+        "queryExtraFlags": [
+          16,
+          16,
+          16,
+          16,
+          16,
+          16
+        ]
+      },
+      "held": {
+        "menu": [
+          1,
+          2,
+          2
+        ],
+        "choiceCount": 8,
+        "disabledCount": 0,
+        "disabled": [],
+        "timer": 35,
+        "rawInput": [
+          32,
+          32,
+          0,
+          0,
+          0
+        ],
+        "originalExtraFlags": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "queryAddress": "0x43f180",
+        "queryExtraFlags": [
+          16,
+          16,
+          16,
+          16,
+          16,
+          16
+        ]
+      },
+      "released": {
+        "menu": [
+          1,
+          2,
+          2
+        ],
+        "choiceCount": 8,
+        "disabledCount": 0,
+        "disabled": [],
+        "timer": 49,
+        "rawInput": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "originalExtraFlags": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "queryAddress": "0x43f180",
+        "queryExtraFlags": [
+          16,
+          16,
+          16,
+          16,
+          16,
+          16
+        ]
+      }
+    },
+    {
+      "target": 4,
+      "before": {
+        "menu": [
+          8,
+          2,
+          0
+        ],
+        "choiceCount": 6,
+        "disabledCount": 0,
+        "disabled": [],
+        "timer": 36,
+        "rawInput": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "originalExtraFlags": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "queryAddress": "0x43f180",
+        "queryExtraFlags": [
+          16,
+          16,
+          16,
+          16,
+          16,
+          16
+        ]
+      },
+      "held": {
+        "menu": [
+          8,
+          2,
+          1
+        ],
+        "choiceCount": 6,
+        "disabledCount": 0,
+        "disabled": [],
+        "timer": 46,
+        "rawInput": [
+          32,
+          32,
+          0,
+          0,
+          0
+        ],
+        "originalExtraFlags": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "queryAddress": "0x43f180",
+        "queryExtraFlags": [
+          16,
+          16,
+          16,
+          16,
+          16,
+          16
+        ]
+      },
+      "released": {
+        "menu": [
+          8,
+          2,
+          1
+        ],
+        "choiceCount": 6,
+        "disabledCount": 0,
+        "disabled": [],
+        "timer": 60,
+        "rawInput": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "originalExtraFlags": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "queryAddress": "0x43f180",
+        "queryExtraFlags": [
+          16,
+          16,
+          16,
+          16,
+          16,
+          16
+        ]
+      }
+    },
+    {
+      "target": 4,
+      "before": {
+        "menu": [
+          8,
+          2,
+          1
+        ],
+        "choiceCount": 6,
+        "disabledCount": 0,
+        "disabled": [],
+        "timer": 60,
+        "rawInput": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "originalExtraFlags": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "queryAddress": "0x43f180",
+        "queryExtraFlags": [
+          16,
+          16,
+          16,
+          16,
+          16,
+          16
+        ]
+      },
+      "held": {
+        "menu": [
+          8,
+          2,
+          2
+        ],
+        "choiceCount": 6,
+        "disabledCount": 0,
+        "disabled": [],
+        "timer": 69,
+        "rawInput": [
+          32,
+          32,
+          0,
+          0,
+          0
+        ],
+        "originalExtraFlags": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "queryAddress": "0x43f180",
+        "queryExtraFlags": [
+          16,
+          16,
+          16,
+          16,
+          16,
+          16
+        ]
+      },
+      "released": {
+        "menu": [
+          8,
+          2,
+          2
+        ],
+        "choiceCount": 6,
+        "disabledCount": 0,
+        "disabled": [],
+        "timer": 83,
+        "rawInput": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "originalExtraFlags": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "queryAddress": "0x43f180",
+        "queryExtraFlags": [
+          16,
+          16,
+          16,
+          16,
+          16,
+          16
+        ]
+      }
+    },
+    {
+      "target": 4,
+      "before": {
+        "menu": [
+          8,
+          2,
+          2
+        ],
+        "choiceCount": 6,
+        "disabledCount": 0,
+        "disabled": [],
+        "timer": 83,
+        "rawInput": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "originalExtraFlags": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "queryAddress": "0x43f180",
+        "queryExtraFlags": [
+          16,
+          16,
+          16,
+          16,
+          16,
+          16
+        ]
+      },
+      "held": {
+        "menu": [
+          8,
+          2,
+          3
+        ],
+        "choiceCount": 6,
+        "disabledCount": 0,
+        "disabled": [],
+        "timer": 93,
+        "rawInput": [
+          32,
+          32,
+          0,
+          0,
+          0
+        ],
+        "originalExtraFlags": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "queryAddress": "0x43f180",
+        "queryExtraFlags": [
+          16,
+          16,
+          16,
+          16,
+          16,
+          16
+        ]
+      },
+      "released": {
+        "menu": [
+          8,
+          2,
+          3
+        ],
+        "choiceCount": 6,
+        "disabledCount": 0,
+        "disabled": [],
+        "timer": 107,
+        "rawInput": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "originalExtraFlags": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "queryAddress": "0x43f180",
+        "queryExtraFlags": [
+          16,
+          16,
+          16,
+          16,
+          16,
+          16
+        ]
+      }
+    },
+    {
+      "target": 4,
+      "before": {
+        "menu": [
+          8,
+          2,
+          3
+        ],
+        "choiceCount": 6,
+        "disabledCount": 0,
+        "disabled": [],
+        "timer": 107,
+        "rawInput": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "originalExtraFlags": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "queryAddress": "0x43f180",
+        "queryExtraFlags": [
+          16,
+          16,
+          16,
+          16,
+          16,
+          16
+        ]
+      },
+      "held": {
+        "menu": [
+          8,
+          2,
+          4
+        ],
+        "choiceCount": 6,
+        "disabledCount": 0,
+        "disabled": [],
+        "timer": 116,
+        "rawInput": [
+          32,
+          32,
+          0,
+          0,
+          0
+        ],
+        "originalExtraFlags": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "queryAddress": "0x43f180",
+        "queryExtraFlags": [
+          16,
+          16,
+          16,
+          16,
+          16,
+          16
+        ]
+      },
+      "released": {
+        "menu": [
+          8,
+          2,
+          4
+        ],
+        "choiceCount": 6,
+        "disabledCount": 0,
+        "disabled": [],
+        "timer": 130,
+        "rawInput": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "originalExtraFlags": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "queryAddress": "0x43f180",
+        "queryExtraFlags": [
+          16,
+          16,
+          16,
+          16,
+          16,
+          16
+        ]
+      }
+    }
+  ],
+  "pauseNavigation": [
+    {
+      "action": "before-escape",
+      "state": 0,
+      "gameTime": 31,
+      "gameFlags": 0,
+      "bombs": 1,
+      "activationCount": 1,
+      "timer": 30,
+      "cursor": 0,
+      "choiceCount": 0,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "pause-open",
+      "state": 3,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 1,
+      "activationCount": 1,
+      "timer": 16,
+      "cursor": 0,
+      "choiceCount": 4,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "before-key",
+      "target": 3,
+      "key": 32,
+      "state": 3,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 1,
+      "activationCount": 1,
+      "timer": 16,
+      "cursor": 0,
+      "choiceCount": 4,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "key-held",
+      "target": 3,
+      "key": 32,
+      "state": 3,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 1,
+      "activationCount": 1,
+      "timer": 25,
+      "cursor": 1,
+      "choiceCount": 4,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "key-released",
+      "target": 3,
+      "key": 32,
+      "state": 3,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 1,
+      "activationCount": 1,
+      "timer": 33,
+      "cursor": 1,
+      "choiceCount": 4,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "before-key",
+      "target": 3,
+      "key": 32,
+      "state": 3,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 1,
+      "activationCount": 1,
+      "timer": 33,
+      "cursor": 1,
+      "choiceCount": 4,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "key-held",
+      "target": 3,
+      "key": 32,
+      "state": 3,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 1,
+      "activationCount": 1,
+      "timer": 42,
+      "cursor": 2,
+      "choiceCount": 4,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "key-released",
+      "target": 3,
+      "key": 32,
+      "state": 3,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 1,
+      "activationCount": 1,
+      "timer": 50,
+      "cursor": 2,
+      "choiceCount": 4,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "before-key",
+      "target": 3,
+      "key": 32,
+      "state": 3,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 1,
+      "activationCount": 1,
+      "timer": 50,
+      "cursor": 2,
+      "choiceCount": 4,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "key-held",
+      "target": 3,
+      "key": 32,
+      "state": 3,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 1,
+      "activationCount": 1,
+      "timer": 59,
+      "cursor": 3,
+      "choiceCount": 4,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "key-released",
+      "target": 3,
+      "key": 32,
+      "state": 3,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 1,
+      "activationCount": 1,
+      "timer": 67,
+      "cursor": 3,
+      "choiceCount": 4,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "selected",
+      "target": 3,
+      "state": 3,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 1,
+      "activationCount": 1,
+      "timer": 67,
+      "cursor": 3,
+      "choiceCount": 4,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "confirmation-ready",
+      "actionIndex": 3,
+      "state": 5,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 1,
+      "activationCount": 1,
+      "timer": 31,
+      "cursor": 1,
+      "choiceCount": 2,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "before-key",
+      "target": 0,
+      "key": 16,
+      "state": 5,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 1,
+      "activationCount": 1,
+      "timer": 31,
+      "cursor": 1,
+      "choiceCount": 2,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "key-held",
+      "target": 0,
+      "key": 16,
+      "state": 5,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 1,
+      "activationCount": 1,
+      "timer": 41,
+      "cursor": 0,
+      "choiceCount": 2,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "key-released",
+      "target": 0,
+      "key": 16,
+      "state": 5,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 1,
+      "activationCount": 1,
+      "timer": 49,
+      "cursor": 0,
+      "choiceCount": 2,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "selected",
+      "target": 0,
+      "state": 5,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 1,
+      "activationCount": 1,
+      "timer": 49,
+      "cursor": 0,
+      "choiceCount": 2,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "confirm-yes",
+      "actionIndex": 3,
+      "state": 5,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 1,
+      "activationCount": 1,
+      "timer": 49,
+      "cursor": 0,
+      "choiceCount": 2,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "before-escape",
+      "state": 0,
+      "gameTime": 31,
+      "gameFlags": 0,
+      "bombs": 2,
+      "activationCount": 2,
+      "timer": 30,
+      "cursor": 0,
+      "choiceCount": 0,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "pause-open",
+      "state": 3,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 2,
+      "activationCount": 2,
+      "timer": 15,
+      "cursor": 0,
+      "choiceCount": 4,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "before-key",
+      "target": 1,
+      "key": 32,
+      "state": 3,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 2,
+      "activationCount": 2,
+      "timer": 15,
+      "cursor": 0,
+      "choiceCount": 4,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "key-held",
+      "target": 1,
+      "key": 32,
+      "state": 3,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 2,
+      "activationCount": 2,
+      "timer": 25,
+      "cursor": 1,
+      "choiceCount": 4,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "key-released",
+      "target": 1,
+      "key": 32,
+      "state": 3,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 2,
+      "activationCount": 2,
+      "timer": 33,
+      "cursor": 1,
+      "choiceCount": 4,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "selected",
+      "target": 1,
+      "state": 3,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 2,
+      "activationCount": 2,
+      "timer": 33,
+      "cursor": 1,
+      "choiceCount": 4,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "confirmation-ready",
+      "actionIndex": 1,
+      "state": 5,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 2,
+      "activationCount": 2,
+      "timer": 31,
+      "cursor": 1,
+      "choiceCount": 2,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "before-key",
+      "target": 0,
+      "key": 16,
+      "state": 5,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 2,
+      "activationCount": 2,
+      "timer": 31,
+      "cursor": 1,
+      "choiceCount": 2,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "key-held",
+      "target": 0,
+      "key": 16,
+      "state": 5,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 2,
+      "activationCount": 2,
+      "timer": 40,
+      "cursor": 0,
+      "choiceCount": 2,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "key-released",
+      "target": 0,
+      "key": 16,
+      "state": 5,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 2,
+      "activationCount": 2,
+      "timer": 48,
+      "cursor": 0,
+      "choiceCount": 2,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "selected",
+      "target": 0,
+      "state": 5,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 2,
+      "activationCount": 2,
+      "timer": 48,
+      "cursor": 0,
+      "choiceCount": 2,
+      "disabledCount": 0,
+      "disabled": []
+    },
+    {
+      "action": "confirm-yes",
+      "actionIndex": 1,
+      "state": 5,
+      "gameTime": 31,
+      "gameFlags": 16,
+      "bombs": 2,
+      "activationCount": 2,
+      "timer": 48,
+      "cursor": 0,
+      "choiceCount": 2,
+      "disabledCount": 0,
+      "disabled": []
+    }
+  ],
+  "ownedProcessExited": true
+}

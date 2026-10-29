@@ -1,0 +1,52 @@
+{
+  "passed": true,
+  "failure": null,
+  "peerErrors": [],
+  "seconds": 60,
+  "elapsedMilliseconds": 60703,
+  "protocol": 3,
+  "hostGame": {
+    "build": "retail-1.00b",
+    "exeHash": "d8d644d2e64957a3031b1a1399d0502e1ddaa5252d2c4e492770ad6717827628"
+  },
+  "guestGame": {
+    "build": "steam-1.00b",
+    "exeHash": "eb275a8c285fd8450fa5ac79fa730a759aeca8b2904aeb16d30e65859372a459"
+  },
+  "disconnectTest": false,
+  "disconnectRequested": false,
+  "disconnectMilliseconds": null,
+  "ownedProcessesExited": true,
+  "host": {
+    "CommittedFrame": 3442,
+    "ConfirmedFrame": 3441,
+    "StageObserved": true,
+    "MaximumP1Shots": 26,
+    "MaximumP2Shots": 26,
+    "GameProcessId": 35160,
+    "minP2X": -184,
+    "maxP2X": 184
+  },
+  "guest": {
+    "CommittedFrame": 3442,
+    "ConfirmedFrame": 3441,
+    "StageObserved": true,
+    "MaximumP1Shots": 26,
+    "MaximumP2Shots": 26,
+    "GameProcessId": 39628,
+    "minP2X": -184,
+    "maxP2X": 184
+  },
+  "notes": [
+    "Host: ゲームとMODのバージョンを確認しています",
+    "Host: 接続待ち · TCP 57567",
+    "Guest: ゲームとMODのバージョンを確認しています",
+    "Guest: ゲームを起動しています",
+    "Host: ゲームを起動しています",
+    "Guest: ゲームの初期化を待っています。表示モードの画面が開いた場合は選択してください。",
+    "Host: ゲームの初期化を待っています。表示モードの画面が開いた場合は選択してください。",
+    "Guest: 2人でプレイ中 · 入力遅延 3 フレーム",
+    "Host: 2人でプレイ中 · 入力遅延 3 フレーム"
+  ],
+  "scope": "Two actual TH12 processes, separate game state and working directories, pinned TLS 1.3 input lockstep over loopback. No video/audio stream. Not a second physical PC or WAN test."
+}

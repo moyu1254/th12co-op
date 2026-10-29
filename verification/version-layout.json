@@ -1,0 +1,21 @@
+{
+  "passed": true,
+  "code_shift": 32,
+  "normalized_code_references": 1840,
+  "version_character_address": "0x42f4b9",
+  "data_sections": {
+    ".rdata": {
+      "shifted_code_pointers": 396,
+      "shifted_safe_seh_rvas": 54,
+      "unexplained_bytes": 0,
+      "steam_equals_retail_1b": true
+    },
+    ".data": {
+      "shifted_code_pointers": 155,
+      "shifted_safe_seh_rvas": 0,
+      "unexplained_bytes": 0,
+      "steam_equals_retail_1b": true
+    }
+  },
+  "verified_hook_signatures": 34
+}
