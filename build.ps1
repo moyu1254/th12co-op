@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [switch]$NativeOnly,
     [switch]$LauncherOnly,
@@ -46,6 +46,23 @@ if (-not $LauncherOnly) {
         ('cl /nologo /MT /EHsc /O2 /W4 /std:c++17 /utf-8 /DUNICODE /D_UNICODE /Fo"{0}" /Fe"{1}" "{2}" /link /MACHINE:X86 /INCREMENTAL:NO bcrypt.lib kernel32.lib' -f $injectorObject, $injectorExe, $injectorSource),
         'exit /b %errorlevel%'
     )
+    if ($SmokeTest) {
+        $quietSource = Join-Path $projectRoot 'src\injector\quiet_test.cpp'
+        $quietObject = Join-Path $buildRoot 'th12coop-quiet-test.obj'
+        $quietDll = Join-Path $outputRoot 'th12coop-quiet-test.dll'
+        $quietImport = Join-Path $buildRoot 'th12coop-quiet-test.lib'
+        $quietTestObject = Join-Path $buildRoot 'quiet-guard-self-test.obj'
+        $quietTest = Join-Path $buildRoot 'quiet-guard-self-test.exe'
+        $commands = $commands[0..($commands.Count - 2)] + @(
+            'if errorlevel 1 exit /b %errorlevel%',
+            ('cl /nologo /LD /MT /EHsc /O2 /W4 /std:c++17 /utf-8 /DUNICODE /D_UNICODE /Fo"{0}" /Fe"{1}" "{2}" /link /MACHINE:X86 /INCREMENTAL:NO /IMPLIB:"{3}" kernel32.lib user32.lib ole32.lib wer.lib' -f $quietObject, $quietDll, $quietSource, $quietImport),
+            'if errorlevel 1 exit /b %errorlevel%',
+            ('cl /nologo /MT /EHsc /O2 /W4 /std:c++17 /utf-8 /DUNICODE /D_UNICODE /DQUIET_GUARD_SELF_TEST /Fo"{0}" /Fe"{1}" "{2}" /link /MACHINE:X86 /INCREMENTAL:NO kernel32.lib user32.lib ole32.lib wer.lib' -f $quietTestObject, $quietTest, $quietSource),
+            'if errorlevel 1 exit /b %errorlevel%',
+            ('"{0}"' -f $quietTest),
+            'exit /b %errorlevel%'
+        )
+    }
     [IO.File]::WriteAllLines($batchPath, $commands, [Text.UTF8Encoding]::new($false))
     & $env:COMSPEC /d /c $batchPath
     if ($LASTEXITCODE -ne 0) { throw "Native build failed with exit code $LASTEXITCODE." }

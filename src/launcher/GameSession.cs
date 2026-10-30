@@ -16,6 +16,9 @@ internal sealed class GameSession : IDisposable
     private readonly MemoryMappedViewAccessor memory;
     private readonly System.Threading.Timer? inputTimer;
     private readonly OwnedGameJob ownership;
+    private readonly LocalInputReader playerOneInput, playerTwoInput;
+    private readonly MemoryMappedFile? playerSelection;
+    private readonly QuietTestEnvironment? quietEnvironment;
     public NetBridge? Network { get; }
     private int disposed;
     public IntPtr Window
@@ -34,11 +37,16 @@ internal sealed class GameSession : IDisposable
     internal (uint Status, uint Frame, float P1X, float P1Y, float P2X, float P2Y, uint P1Shots, uint P2Shots) Snapshot()
         => (memory.ReadUInt32(20), memory.ReadUInt32(24), memory.ReadSingle(28), memory.ReadSingle(32), memory.ReadSingle(36), memory.ReadSingle(40), memory.ReadUInt32(56), memory.ReadUInt32(60));
 
-    private GameSession(Process process, MemoryMappedFile mapping, NetBridge? network, OwnedGameJob ownership)
+    private GameSession(Process process, MemoryMappedFile mapping, NetBridge? network, OwnedGameJob ownership, MemoryMappedFile? playerSelection, QuietTestEnvironment? quietEnvironment)
     {
         Process = process;
         this.mapping = mapping;
         this.ownership = ownership;
+        this.playerSelection = playerSelection;
+        this.quietEnvironment = quietEnvironment;
+        var inputs = quietEnvironment == null ? InputSettingsStore.Load() : new InputSettings();
+        playerOneInput = new LocalInputReader(inputs.PlayerOne, process.Id);
+        playerTwoInput = new LocalInputReader(inputs.PlayerTwo, process.Id);
         Network = network;
         memory = mapping.CreateViewAccessor(0, 64);
         memory.Write(16, network != null ? 0u : 1u);
@@ -80,21 +88,39 @@ internal sealed class GameSession : IDisposable
     }
 
     public static async Task<GameSession> Start(string gameDirectory, bool online, CancellationToken token, string? testNativePath = null,
-        Action<string>? startupStatus = null, NetworkLaunch? network = null)
+        Action<string>? startupStatus = null, NetworkLaunch? network = null, PlayerSelection? players = null, bool quietTest = false)
     {
         // Serialize our launchers across processes. A semaphore can be released
         // after asynchronous waits without the thread affinity of a mutex.
         using var startup = new Semaphore(1, 1, network?.TestInstance == true ? null : "Local\\TH12CoopStartup");
         if (!startup.WaitOne(0)) throw new AlreadyRunningException("別のTH12 CO-OPがゲームを起動中です。起動が完了するまでお待ちください。");
-        try { return await StartCore(gameDirectory, online, token, testNativePath, startupStatus, network); }
+        players?.Validate();
+        QuietTestEnvironment? quiet = null;
+        try
+        {
+            if (quietTest || network?.TestInstance == true)
+            {
+                QuietTestEnvironment.ValidateDirectory(gameDirectory);
+                quiet = new QuietTestEnvironment();
+            }
+            return await StartCore(gameDirectory, online, token, testNativePath, startupStatus, network, players, quiet);
+        }
+        catch { quiet?.Dispose(); throw; }
         finally { startup.Release(); }
     }
 
     private static async Task<GameSession> StartCore(string gameDirectory, bool online, CancellationToken token, string? testNativePath,
-        Action<string>? startupStatus, NetworkLaunch? network)
+        Action<string>? startupStatus, NetworkLaunch? network, PlayerSelection? players, QuietTestEnvironment? quiet)
     {
         if (network?.TestInstance != true) RequireNoRunningGame();
         var configuration = ConfigurationSnapshot.Read(Path.Combine(gameDirectory, "th12.cfg"));
+        if (quiet != null)
+        {
+            var testConfiguration = await GameConfiguration.ReadLocal(gameDirectory, token);
+            if (testConfiguration[0x1d] is 0 or > 3) testConfiguration[0x1d] = 1;
+            testConfiguration[0x39] &= 0xfe; // No display selection dialog during hidden tests.
+            await GameConfiguration.Save(Path.Combine(gameDirectory, "th12.cfg"), testConfiguration, token);
+        }
         var exe = Path.Combine(gameDirectory, "th12.exe");
         var dll = testNativePath ?? Path.Combine(AppContext.BaseDirectory, "th12coop-native.dll");
         var injector = Path.Combine(AppContext.BaseDirectory, "injector.exe");
@@ -117,8 +143,19 @@ internal sealed class GameSession : IDisposable
         // Waiting for a title window would leave the primary thread racing
         // multi-byte native patch writes, even when no stage has started.
         var startupInfo = new Native.StartupInfo { Size = Marshal.SizeOf<Native.StartupInfo>() };
-        if (!Native.CreateProcess(exe, new StringBuilder('"' + exe + '"'), IntPtr.Zero, IntPtr.Zero, false, 4, IntPtr.Zero,
-            gameDirectory, ref startupInfo, out var information)) throw new Win32Exception(Marshal.GetLastWin32Error(), "ゲームを停止状態で起動できませんでした。");
+        Native.ProcessInformation information;
+        if (quiet != null)
+        {
+            startupInfo.Desktop = Marshal.StringToHGlobalUni(quiet.DesktopName);
+            // The pre-entry guard creates hidden, nonactivating windows.
+            // Minimizing here can prevent D3D9 initialization.
+        }
+        try
+        {
+            if (!Native.CreateProcess(exe, new StringBuilder('"' + exe + '"'), IntPtr.Zero, IntPtr.Zero, false, 4, IntPtr.Zero,
+                gameDirectory, ref startupInfo, out information)) throw new Win32Exception(Marshal.GetLastWin32Error(), "ゲームを停止状態で起動できませんでした。");
+        }
+        finally { if (startupInfo.Desktop != IntPtr.Zero) Marshal.FreeHGlobal(startupInfo.Desktop); }
         Process process;
         OwnedGameJob? ownership = null;
         try
@@ -138,11 +175,13 @@ internal sealed class GameSession : IDisposable
         primaryThreadId = information.ThreadId;
         MemoryMappedFile? map = null;
         MemoryMappedFile? boot = null;
+        MemoryMappedFile? selection = null;
         NetBridge? bridge = null;
         var initialized = false;
         try
         {
             var deadline = Stopwatch.StartNew();
+            selection = players?.Publish(process.Id);
             boot = MemoryMappedFile.CreateNew($"Local\\TH12CoopBoot_{process.Id}", 16);
             using (var bootHeader = boot.CreateViewAccessor(0, 16))
             {
@@ -151,7 +190,8 @@ internal sealed class GameSession : IDisposable
             }
             if (network != null)
             {
-                bridge = new NetBridge(process.Id, network.Seed, network.TestInstance, primaryThreadId);
+                bridge = new NetBridge(process.Id, network.Seed, network.TestInstance, primaryThreadId,
+                    network.TestInstance ? null : InputSettingsStore.Load().PlayerOne);
                 network.BridgeCreated(bridge);
             }
             var injection = new ProcessStartInfo(injector)
@@ -161,11 +201,17 @@ internal sealed class GameSession : IDisposable
                 RedirectStandardError = true,
                 RedirectStandardOutput = true,
             };
-            injection.ArgumentList.Add("--early"); injection.ArgumentList.Add(process.Id.ToString()); injection.ArgumentList.Add(primaryThreadId.ToString());
+            injection.ArgumentList.Add("--early");
+            if (quiet != null) injection.ArgumentList.Add("--quiet-test");
+            injection.ArgumentList.Add(process.Id.ToString()); injection.ArgumentList.Add(primaryThreadId.ToString());
             injection.ArgumentList.Add(dll);
             using var inject = System.Diagnostics.Process.Start(injection) ?? throw new IOException("MODローダーを起動できませんでした。");
             var errors = inject.StandardError.ReadToEndAsync(token);
-            await inject.WaitForExitAsync(token);
+            try { await inject.WaitForExitAsync(token); }
+            finally
+            {
+                if (!inject.HasExited) { inject.Kill(); await inject.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5)); }
+            }
             if (inject.ExitCode != 0) throw new IOException("MODの読み込みに失敗しました。" + await errors);
             deadline.Restart();
             while (map == null)
@@ -204,6 +250,16 @@ internal sealed class GameSession : IDisposable
                 }
                 if (bridge.Status is not (1 or 5)) throw new IOException($"同期MODを初期化できませんでした（状態 {bridge.Status}、コード {bridge.Error}）。");
             }
+            else
+            {
+                // Own offline menu input before the first poll as well. The
+                // normal reader starts after device readiness; until then no
+                // legacy physical binding can bypass the configured controls.
+                using var controls = map.CreateViewAccessor(0, 64);
+                controls.Write(8, 0u); controls.Write(12, 0u);
+                controls.Write(44, unchecked((uint)Environment.TickCount));
+                controls.Write(16, 1u);
+            }
             if (Native.ResumeThread(primaryThread) == uint.MaxValue) throw new Win32Exception(Marshal.GetLastWin32Error(), "ゲームの起動を再開できませんでした。");
             Native.CloseHandle(primaryThread); primaryThread = IntPtr.Zero;
             startupStatus?.Invoke("ゲームの初期化を待っています。表示モードの画面が開いた場合は選択してください。");
@@ -226,7 +282,10 @@ internal sealed class GameSession : IDisposable
             token.ThrowIfCancellationRequested();
             if (process.HasExited) throw new IOException("ゲームが初期化中に終了しました。");
             initialized = true;
-            var session = new GameSession(process, map, bridge, ownership);
+            if (quiet != null && QuietTestEnvironment.ReadEvidence(process.Id).Failures != 0)
+                throw new IOException("無音テスト用の音声制御に失敗しました。");
+            var session = new GameSession(process, map, bridge, ownership, selection, quiet);
+            selection = null;
             map = null;
             bridge = null;
             ownership = null;
@@ -253,6 +312,7 @@ internal sealed class GameSession : IDisposable
         finally
         {
             boot?.Dispose();
+            selection?.Dispose();
             ownership?.Dispose();
             if (primaryThread != IntPtr.Zero) Native.CloseHandle(primaryThread);
         }
@@ -310,22 +370,12 @@ internal sealed class GameSession : IDisposable
         {
             Native.GetWindowThreadProcessId(Native.GetForegroundWindow(), out var foregroundProcess);
             var focused = foregroundProcess == Process.Id;
-            memory.Write(8, focused ? ReadPlayerOne() : 0u);
-            memory.Write(12, focused ? ReadPlayerTwo() : 0u);
+            memory.Write(8, focused ? playerOneInput.Read() : 0u);
+            memory.Write(12, focused ? playerTwoInput.Read() & 0xfbu : 0u);
             memory.Write(44, unchecked((uint)Environment.TickCount));
         }
         catch (ObjectDisposedException) { }
         catch (InvalidOperationException) { }
-    }
-
-    public static uint ReadPlayerOne() => KeysToMask(Keys.Up, Keys.Down, Keys.Left, Keys.Right, Keys.Z, Keys.X, Keys.LShiftKey);
-    private static uint ReadPlayerTwo() => KeysToMask(Keys.I, Keys.K, Keys.J, Keys.L, Keys.F, Keys.G, Keys.D);
-    private static uint KeysToMask(params Keys[] keys)
-    {
-        uint result = 0;
-        uint[] masks = [0x10, 0x20, 0x40, 0x80, 1, 2, 8];
-        for (var i = 0; i < keys.Length; ++i) if ((Native.GetAsyncKeyState((int)keys[i]) & 0x8000) != 0) result |= masks[i];
-        return result;
     }
 
     public void StopGame()
@@ -353,12 +403,15 @@ internal sealed class GameSession : IDisposable
         memory.Dispose();
         mapping.Dispose();
         Network?.Dispose();
+        playerSelection?.Dispose();
+        quietEnvironment?.Dispose();
         Process.Dispose();
     }
 }
 
 internal static class Native
 {
+    [DllImport("kernel32.dll")] internal static extern uint SetErrorMode(uint mode);
     [DllImport("user32.dll")] internal static extern short GetAsyncKeyState(int key);
     [DllImport("user32.dll")] internal static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] internal static extern bool SetForegroundWindow(IntPtr window);

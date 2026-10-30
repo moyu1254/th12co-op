@@ -1,0 +1,103 @@
+{
+  "binaries": {
+    "TH12Coop.exe": {
+      "sha256": "315ceabebc1e0b4ca661076aadac9c3ef9ffc1205d517ce7f8132c57eec9862c",
+      "bytes": 162304
+    },
+    "TH12Coop.dll": {
+      "sha256": "c10213e1508dd316b62e6f74d0174ad566b8e16b7012e92110af2ea696bdb40e",
+      "bytes": 287744
+    },
+    "injector.exe": {
+      "sha256": "476af36777556cee19ed902afca5b6987780fc4da6b28ecddf709b52ed72337d",
+      "bytes": 140800
+    },
+    "th12coop-native.dll": {
+      "sha256": "f438118a656af23e4eb5be4661f679140de6b9dfa193622d20024083ef84d121",
+      "bytes": 180224
+    },
+    "th12coop-smoke.dll": {
+      "sha256": "823783d0b37defa0cde95b86596a4423e562eed8f539d586ad4ef4af13c692cb",
+      "bytes": 221696
+    },
+    "th12coop-quiet-test.dll": {
+      "sha256": "3e0766dd5ef7d10376e9f2269a41cbafd7024da51526eebac55897baf0d05bbe",
+      "bytes": 93184
+    }
+  },
+  "sources": {
+    "src/native/coop_audit.h": "3dd4c9cc37e384369e973e45380cfbaf208438c1f1bcd66c75d86b1e7a593f2d",
+    "src/native/coop_audit_bullets.h": "e579a7d808f179277c8b596941639b805d0fbf16a6c8141f7b87045be746c6bb",
+    "src/native/coop_audit_campaign.h": "6dd9887a2e1c7c24022fcf0421c429d0c2f31f5fc7d848e6e06c06289fc98b1f",
+    "src/native/coop_audit_ecl.h": "c7e3a392c093e0e9e063b75f838aec2cb5dd76d30a9d8ae92964079d14e2a47b",
+    "src/native/coop_audit_items.h": "0e2642395f7353cdc8c9614cb1032e215570e0853fec770c158178c11a2e504b",
+    "src/native/coop_audit_resources.h": "962b6ce43806fc6c6295941d4f4692175e40eead9253f7fec9ea7b2f5139b669",
+    "src/native/coop_audit_sync.h": "369d959886f42c5f146d8459b17e607741013c4b57c95e9c4cd6358d1bba0402",
+    "src/native/coop_audit_targeting.h": "b2fa73f5401641d976c3029ad68c92c66620c73dd46a2105f90c0c92606dbe83",
+    "src/native/coop_boot.h": "99e88704df57aac96ec2da968763cc94b5f147b3196156791a502b50e624daa8",
+    "src/native/coop_characters.h": "87d7eef808678c844eef3a1434f4d064ba8fd4554b5daeb9a5cb56bed97b3a10",
+    "src/native/coop_collision.h": "fff9478949e1172996dd3654ab7b5ebedbd8ee6658180eca65424398c79bf43a",
+    "src/native/coop_ecl_digest.h": "2598cac62b8db6f7960a5405940f425d6efadbe22ee8d84500b7a3a635ba3c97",
+    "src/native/coop_effects.h": "04390f6107b2cdccc8c2a8cc956fd0bea38849af10f94f2068324fef10a3098d",
+    "src/native/coop_force.h": "91ede9a2ed8a14f4d9f197b16561aa2f9d3d581cd51144f56a419b94dd1ced27",
+    "src/native/coop_homing.h": "85672af42a9e97a462045407767f89da1605f6e56a5220cb785c6994275b043f",
+    "src/native/coop_items.h": "b8f4c07463d6436330b2d669449d932928ba92f5889e7c83f2a3def12061a509",
+    "src/native/coop_progression.h": "e06615b710b67b32a46f1268b6b0bba6057f1cfb7082b60baae0740879e8e391",
+    "src/native/coop_projectile_digest.h": "b83f514193af520c7e88b7662e82e9b6a560770b1ba4e524f5eba7e14dfe2953",
+    "src/native/coop_resources.h": "6ed9dc3e0e626b60c9ca5093ddadbbc55489481566868ba8d19ef2f57c0ef44d",
+    "src/native/coop_scorecompat.h": "235d1e34c9f6006de8b09887bc9efcbf2519eb714df363070d5bb42bc6ea0e87",
+    "src/native/coop_targeting.h": "d2f3ac50f3b82627c7cd69d2f00983ca565ea5b9171c8ef58a958017580af656",
+    "src/native/game_layout.h": "e2c0b078d6670dd5635488e0e5593d1eec123e170d5513a5b1c8c6fcac858514",
+    "src/native/lockstep.h": "beceab6a42f85c4b8dec7fb154de5a45828637c8a515625dbe66c422cda66740",
+    "src/native/patch.h": "9c9f3f7bf21dd2b1c4a625aca9503661e7fb6636ff75d48df1501549f130d3b7",
+    "src/native/th12coop.cpp": "862b8b96497d9d4f5505ba42192ccba7fe267f345b935fe260efc0e2d4203af0",
+    "src/injector/injector.cpp": "33b081380a84bf482eba26548309e91c7fb10c51a15eade1ddd799afa05bc13b",
+    "src/injector/quiet_test.cpp": "4a0c0fed96205f1d7d4c1b20a5ab693f321700e92e5a30c539030b230e362549",
+    "src/launcher/GameBuild.cs": "4d5f5bec7a9c9cecee98afa67b506abcbc3478c21a273206907759168d2532f7",
+    "src/launcher/GameConfiguration.cs": "defbf80fb4318bf95a7d95ceb16f4d9edc27c28722a166546d5315e375327dad",
+    "src/launcher/GameSession.cs": "1336d107da1f12f2a2731f48902885afe8a144e5ae516f1376ece26d220a8843",
+    "src/launcher/GameSettingsForm.cs": "cd1b9664a9a589bdc12eafc35dea1afcc0359f090182ac7d1c32375c578cad8b",
+    "src/launcher/InputSettingsForm.cs": "0816a353c8b1cbac623232c728575dd905d12a1e9b82434576b2a0efe92d3623",
+    "src/launcher/LauncherForm.cs": "6c344d58afaa7c283fa11fe185935b672d08dfcac7f33c55f49f9047bba64da5",
+    "src/launcher/LocalConfigurationTests.cs": "2f43bcbd861b9b9ed953eec7359882baa673c84872646aad1bca952d21b2a4c0",
+    "src/launcher/LocalInput.cs": "9670c47862c7fc36782464c9af5d04b3aee0ae96006db7d6246c61124a788ac1",
+    "src/launcher/LocalInputTests.cs": "d5c3424cbd3375781ddabbeb775f2d7ceafe109652fba961c7c01c63f56bb438",
+    "src/launcher/LockstepPeer.cs": "ac522075d0fa46471653ec7c7695a0210e1c687cd109a996ac8ab88b20cccab3",
+    "src/launcher/LockstepTest.cs": "8d5757e774b1240cd687f0ab1ce94c4e785b4842f0454ff32d369667971449d3",
+    "src/launcher/ManagedAuditTests.cs": "bdd435027f3e792c3627a1d6365f8883426555f39899a9bd94334ff98f25f2a2",
+    "src/launcher/NetBridge.cs": "1d9f3d588f1e373a483b8388b270e5678c6e9a80170f20a9fb0cc5fc89895fbb",
+    "src/launcher/OnlineProfile.cs": "cfac7b9d7e0367d1be66149158f18a3b282fd850746cba847d8b3063d5a63f75",
+    "src/launcher/OnlineSession.cs": "06de542614026668876e8a02fca9ad107ddfbd991d0af2a4a81dfb3ca0fd9536",
+    "src/launcher/OwnedGameJob.cs": "236c8d9ff7f776aa281bae03a67e5f58172b7897df6d1b0ac0a387e535984c36",
+    "src/launcher/PlayerSelection.cs": "504a7acad902fe9c41ca0fa50d55dad6c408d8a62291991f1fdd8dafa1e2eb13",
+    "src/launcher/Program.cs": "08eb687fa7f02442364fd4224e7587dc796a84ca46f61923fdc3460361bafed4",
+    "src/launcher/Protocol.cs": "d6e2e53f16b7d9347aaa37b7974b4f5a80d928452f02c53838da52d49effdecf",
+    "src/launcher/QuietTestEnvironment.cs": "1e78f0236178eb56379f1aeec66d749d0cfa89abd7471d175d2a3c28a9c15888",
+    "src/launcher/SelfTests.cs": "859ba315ad7503ec990ba4e0f56de349ba12a7ab9899cc79f6ea59196604d21d",
+    "src/launcher/StartupTest.cs": "e3ee6127de7223a48008cb001990f3e45cdbd7bc18fd309bf96c4a973f0072fa",
+    "src/launcher/TH12Coop.Launcher.csproj": "fca9ae66e4bb28da66bb42a1982b435b6fed78cb0a128e13f4b16f2cb4f77236",
+    "scripts/Package.ps1": "55225b6531e1ceedaa4c63ee38daf1f69b106081f81dad35603500297aba287e",
+    "scripts/Prepare-Game.ps1": "29ab419cd7793c23e9806d6a6dd3d3315388160c7dfe6e98f3b50a98a4e3eeb7",
+    "scripts/probe.py": "f2d3ab08951832a1be7362539016b93c6fa917e36b81df475a9300393d9378dc",
+    "scripts/quiet_test.py": "e4efb615728cf510f22baac5c1c8d63a8bafc0f1e738beb3d8f037cefd4eb34b",
+    "scripts/smoke_gameplay.py": "4c1b8a6756500ad148fc04a16ba01956d9363dd95b9c7b90aa12d296b599b10b",
+    "scripts/smoke_lifecycle.py": "cc7e739ca962d8cc7df732f0e50f36048d40582c2ac1ee9d8c89d229b7b697a3",
+    "scripts/smoke_p2_collision.py": "2803ef0600b368e99d747efcef97eeb4eaade205ae90be11a24c2adf09a248e8",
+    "scripts/Test-Repository.ps1": "5e5b4a8fdb329ce0016ce76c61037f5c2b8c0931fc3394a44402f3ded4efa004",
+    "scripts/test_cooperative_campaign.py": "7cd292489e336c4cde4d56364e7904226f8fb4693e7969a3959efd2e8bc575f4",
+    "scripts/test_cooperative_modes.py": "b31d191a1b32ea8b260246132a6cb367caac24c6d256f06a7afaa14249aabc67",
+    "scripts/test_cooperative_regressions.py": "ee7a5582f94badc55dbb7951cdf28a033cbdaae45f5fd03c7f22d4671306ad3a",
+    "scripts/test_cooperative_rules.py": "9a095864e22ac90a6640850eb0bf8e243ffd285a94893357e13dcc49a60e0c5e",
+    "scripts/test_loader_fence.py": "2d9c89e95e3176935209cee25c9cee56d495a0b5b80771c2751eca3b19c779e3",
+    "scripts/test_managed_gameplay.py": "c0d7f2fc39f4aff522e4a5a7a82ace4ed27ec7aaef24030b87fd880de66ef74f",
+    "scripts/test_native_characters.py": "39e50f43b7679f9ec41a384c2dea642a78542b5dde0368e056f05a9fdc6bac8e",
+    "scripts/test_native_cleanup.py": "8ab0cc6729ddbefbad2f418540e0716a52b63a17dee218509f4805b8088ffd54",
+    "scripts/test_native_lifecycle.py": "88ffe678070a65e905ca8427672b0b01adaa67136d381dd8cdc35ad387681ce5",
+    "scripts/test_native_lockstep.py": "99216810ddeaea03b137ddedbb14b495a171935257a4d241a406b37957861d37",
+    "scripts/test_native_modes.py": "cf47921204fd60bc9f528e43bec8f03535fc5c81d8d471d509854cbd006857d6",
+    "scripts/test_smoke_cleanup.py": "53bf030ff86170d6374e4bc4d3f9dad7ada393e168fd66a2d7ab91789214fb56",
+    "scripts/test_smoke_paths.py": "9386ddf37c356a93d8afff065f23c4e36f211ab9487b1b11202e1f1bced3de35",
+    "scripts/thread_snapshot.py": "21599e310cfa4d42f270fce8bddaab57f35b0c0b1baf1b6116d6c319464db9e9",
+    "scripts/verify_package.py": "04d5369eb72d8adc08c947351553934da9a007c18cb14073278ecfa413e760f3"
+  }
+}

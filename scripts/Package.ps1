@@ -12,7 +12,7 @@ $packageRoot = Join-Path $stage $Name
 $packageDist = Join-Path $packageRoot 'dist'
 [IO.Directory]::CreateDirectory($packageDist) | Out-Null
 foreach ($file in Get-ChildItem -LiteralPath $distRoot -File) {
-    if ($file.Name -like '*-test-*' -or $file.Name -like '*-results.*' -or $file.Name -like '*-smoke*' -or $file.Extension -eq '.pdb') { continue }
+    if ($file.Name -like '*-test-*' -or $file.Name -like '*-test.*' -or $file.Name -like '*-results.*' -or $file.Name -like '*-smoke*' -or $file.Extension -eq '.pdb') { continue }
     Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $packageDist $file.Name)
 }
 foreach ($directory in Get-ChildItem -LiteralPath $distRoot -Directory) {

@@ -10,9 +10,10 @@ namespace TH12Coop;
 internal static class OnlineSession
 {
     public static async Task Host(string gameDirectory, int port, RoomIdentity identity, int delay, Action<string> status, CancellationToken token,
-        string? testNativePath = null, bool testInstance = false, Func<uint, uint>? testInput = null, Action<LockstepPeer>? observe = null)
+        string? testNativePath = null, bool testInstance = false, Func<uint, uint>? testInput = null, Action<LockstepPeer>? observe = null, int? localCharacter = null)
     {
         if (delay is < 1 or > 12) throw new ArgumentOutOfRangeException(nameof(delay));
+        ValidateCharacter(localCharacter);
         status("ゲームとMODのバージョンを確認しています");
         var profile = await OnlineProfile.Read(gameDirectory, token, testNativePath);
         var listener = new TcpListener(IPAddress.IPv6Any, port);
@@ -23,15 +24,7 @@ internal static class OnlineSession
             status($"接続待ち · TCP {port}");
             using var channel = await AcceptGuest(listener, identity, token);
             listener.Stop();
-            var manifest = new SessionManifest(SecureChannel.ProtocolVersion, NetBridge.RulesVersion, delay,
-                (uint)RandomNumberGenerator.GetInt32(1, 65536), Convert.ToHexString(channel.Session), profile.Assets);
-            var offer = OnlineProfile.Encode(manifest);
-            await channel.Send(offer, token);
-            var acknowledgement = await channel.Receive(token);
-            if (acknowledgement.Length != 33 || acknowledgement[0] != 2 ||
-                !CryptographicOperations.FixedTimeEquals(acknowledgement.AsSpan(1), SHA256.HashData(offer)))
-                throw new IOException("相手のゲーム・MOD確認に失敗しました。");
-            await channel.Send([3], token);
+            var manifest = await NegotiateHost(channel, profile.Assets, delay, localCharacter, token);
             var peer = new LockstepPeer(channel, manifest, 1);
             observe?.Invoke(peer);
             await peer.Run(profile, testInstance, testInput, status, token);
@@ -40,23 +33,71 @@ internal static class OnlineSession
     }
 
     public static async Task Join(string gameDirectory, string host, int port, string invite, Action<string> status, CancellationToken token,
-        string? testNativePath = null, bool testInstance = false, Func<uint, uint>? testInput = null, Action<LockstepPeer>? observe = null)
+        string? testNativePath = null, bool testInstance = false, Func<uint, uint>? testInput = null, Action<LockstepPeer>? observe = null, int? localCharacter = null)
     {
+        ValidateCharacter(localCharacter);
         status("ゲームとMODのバージョンを確認しています");
         var profile = await OnlineProfile.Read(gameDirectory, token, testNativePath);
         using var channel = await SecureChannel.Connect(host, port, invite, token);
+        var manifest = await NegotiateGuest(channel, profile.Assets, localCharacter, token);
+        var peer = new LockstepPeer(channel, manifest, 2);
+        observe?.Invoke(peer);
+        await peer.Run(profile, testInstance, testInput, status, token);
+    }
+
+    internal static async Task<SessionManifest> NegotiateHost(SecureChannel channel, AssetProfile assets, int delay, int? localCharacter, CancellationToken token)
+    {
+        if (delay is < 1 or > 12) throw new ArgumentOutOfRangeException(nameof(delay));
+        ValidateCharacter(localCharacter);
+        var guestCharacter = DecodeCharacter(await channel.Receive(token));
+        if (localCharacter.HasValue != guestCharacter.HasValue) throw new IOException("双方でランチャーから機体を選択してください。");
+        var players = localCharacter.HasValue ? new PlayerSelection(localCharacter.Value, guestCharacter!.Value) : null;
+        var manifest = new SessionManifest(SecureChannel.ProtocolVersion, NetBridge.RulesVersion, delay,
+            (uint)RandomNumberGenerator.GetInt32(1, 65536), Convert.ToHexString(channel.Session), assets, players);
+        var offer = OnlineProfile.Encode(manifest);
+        await channel.Send(offer, token);
+        var acknowledgement = await channel.Receive(token);
+        if (acknowledgement.Length != 33 || acknowledgement[0] != 2 ||
+            !CryptographicOperations.FixedTimeEquals(acknowledgement.AsSpan(1), SHA256.HashData(offer)))
+            throw new IOException("相手のゲーム・MOD確認に失敗しました。");
+        await channel.Send([3], token);
+        return manifest;
+    }
+
+    internal static async Task<SessionManifest> NegotiateGuest(SecureChannel channel, AssetProfile assets, int? localCharacter, CancellationToken token)
+    {
+        ValidateCharacter(localCharacter);
+        await channel.Send(EncodeCharacter(localCharacter), token);
         var offer = await channel.Receive(token);
         if (offer.Length < 2 || offer[0] != 1) throw new IOException("ゲーム開始情報が不正です。");
         SessionManifest manifest;
         try { manifest = JsonSerializer.Deserialize<SessionManifest>(offer.AsSpan(1)) ?? throw new JsonException(); }
         catch (JsonException) { throw new IOException("ゲーム開始情報を読み取れません。"); }
-        profile.Validate(manifest, channel.Session);
+        OnlineProfile.ValidateRules(manifest, channel.Session);
+        OnlineProfile.ValidateAssets(assets, manifest.Assets);
+        if (manifest.Players?.PlayerTwo != localCharacter) throw new IOException("相手が確認した自分の機体選択が一致しません。");
         await channel.Send(new byte[] { 2 }.Concat(SHA256.HashData(offer)).ToArray(), token);
         var start = await channel.Receive(token);
         if (start.Length != 1 || start[0] != 3) throw new IOException("ゲーム開始の確認に失敗しました。");
-        var peer = new LockstepPeer(channel, manifest, 2);
-        observe?.Invoke(peer);
-        await peer.Run(profile, testInstance, testInput, status, token);
+        return manifest;
+    }
+
+    internal static void ValidateCharacter(int? character)
+    {
+        if (character is < 0 or > 5) throw new IOException("機体・装備の選択が正しくありません。");
+    }
+
+    internal static byte[] EncodeCharacter(int? character)
+    {
+        ValidateCharacter(character);
+        return [4, character.HasValue ? (byte)character.Value : (byte)255];
+    }
+
+    internal static int? DecodeCharacter(byte[] selection)
+    {
+        if (selection.Length != 2 || selection[0] != 4 || (selection[1] > 5 && selection[1] != 255))
+            throw new IOException("相手の機体選択が正しくありません。");
+        return selection[1] == 255 ? null : selection[1];
     }
 
     internal static async Task<SecureChannel> AcceptGuest(TcpListener listener, RoomIdentity identity, CancellationToken token)

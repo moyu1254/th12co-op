@@ -10,7 +10,7 @@ if ($LASTEXITCODE -ne 0 -or $entries.Count -eq 0) { throw 'Run this check in a G
 # belong in Git. Original game assets and compiled diagnostics stay local.
 $allowed = '^(?:\.gitignore|\.gitattributes|(?:README|AGENTS|CHANGELOG|SECURITY|CONTRIBUTING|LICENSE|NOTICE)(?:\.(?:md|txt))?|build\.ps1|(?:Start|Offline)\.cmd|\.github/workflows/[^/]+\.ya?ml|src/.+\.(?:cs|csproj|cpp|h)|scripts/[^/]+\.(?:ps1|py)|docs/.+\.md|licenses/[^/]+\.txt|verification/.+\.(?:md|json|txt)|profiles/th12-online\.cfg)$'
 $excluded = '(^|/)(?:bin|obj|__pycache__|game(?:-[^/]*)?|sessions|build|dist|release|artifacts|research|\.cache)(/|$)'
-$secret = '(?:-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{50,}|T12L3\.[A-Za-z0-9_-]{86})'
+$secret = '(?:-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{50,}|T12L[34]\.[A-Za-z0-9_-]{86})'
 $utf8 = [Text.UTF8Encoding]::new($false, $true)
 $count = 0
 foreach ($entry in $entries) {

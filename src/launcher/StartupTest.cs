@@ -15,7 +15,7 @@ internal static partial class SelfTests
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(120));
         try
         {
-            session = await GameSession.Start(gameDirectory, false, timeout.Token);
+            session = await GameSession.Start(gameDirectory, false, timeout.Token, quietTest: true);
             if (session.Network != null || session.HasExited || session.Status != 1)
                 throw new IOException("Owner-exit test did not reach native offline ready.");
             File.WriteAllText(reportPath, JsonSerializer.Serialize(new
@@ -56,7 +56,7 @@ internal static partial class SelfTests
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(120));
         try
         {
-            session = await GameSession.Start(gameDirectory, false, timeout.Token);
+            session = await GameSession.Start(gameDirectory, false, timeout.Token, quietTest: true);
             pid = session.Process.Id;
             await Task.Delay(1500, timeout.Token);
             status = session.Status;
@@ -101,7 +101,7 @@ internal static partial class SelfTests
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         try
         {
-            using var unexpected = await GameSession.Start(gameDirectory, false, timeout.Token);
+            using var unexpected = await GameSession.Start(gameDirectory, false, timeout.Token, quietTest: true);
             await unexpected.StopGameAsync();
             message = "Unexpectedly started a second game";
         }

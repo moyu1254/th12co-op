@@ -4,7 +4,7 @@
 
 ## 通信と認証
 
-Protocol.csは.NETのSslStreamでTLS 1.3を必須にする。アプリの通信版は3、協力プレイルール版は3、ローカルIPCの構造体版は1で、それぞれ別に検証する。ホストはECDSA P-256の一時証明書と256-bitのランダム参加鍵を作成する。T12L3招待には証明書全体のSHA-256と参加鍵を格納し、接続先IP・ポートは別に指定する。ゲストは証明書のハッシュを固定時間で照合し、ホストはTLS内で参加鍵を固定時間で検証する。成功後に128-bitのセッションIDを発行する。終了・中止・失敗後は部屋の証明書と参加鍵を更新する。旧版の招待・通信版・ルール版は受理しない。
+Protocol.csは.NETのSslStreamでTLS 1.3を必須にする。アプリの通信版は4、協力プレイルール版は4、ローカルIPCの構造体版は1で、それぞれ別に検証する。ホストはECDSA P-256の一時証明書と256-bitのランダム参加鍵を作成する。T12L4招待には証明書全体のSHA-256と参加鍵を格納し、接続先IP・ポートは別に指定する。ゲストは証明書のハッシュを固定時間で照合し、ホストはTLS内で参加鍵を固定時間で検証する。成功後に128-bitのセッションIDを発行する。終了・中止・失敗後は部屋の証明書と参加鍵を更新する。旧版の招待・通信版・ルール版は受理しない。
 
 TLSが鍵交換、方向別の鍵、暗号文の完全性を担当する。独自AES-GCMレコード層や0-RTTのゲーム開始処理は使用しない。自己署名証明書は招待のpinと一致する場合だけ受理する。[TLS 1.3](https://www.rfc-editor.org/rfc/rfc8446.html)、[TLS運用指針](https://www.rfc-editor.org/rfc/rfc9325.html)、[SslStreamの公式指針](https://learn.microsoft.com/en-us/dotnet/core/extensions/sslstream-best-practices)。
 
@@ -30,13 +30,13 @@ TCPの分割・結合を前提にReadExactlyAsyncで読む。不明種別、過�
 
 ## 開始合意とローカル実行
 
-OnlineProfile.ReadはローカルEXE・DAT・BGM・MOD DLL・固定オンライン設定をSHA-256で識別し、既知EXEと対応するDAT/BGMの組合せを検証する。既知本体は通常版1.00a・通常版1.00b・Steam版1.00bの3つに限定する。manifestにはプロトコル版、ルール版、入力遅延、乱数seed、セッションID、既知build ID、資産と依存DLLの識別値を含め、ゲストはmanifest全体のハッシュへ応答する。OnlineProfile.ValidateRulesはルール版3以外をセッション準備前に拒否する。NetBridgeはIPC offset76へ3を書き、native lockstep.Initializeも3以外をフック設置前に拒否する。機体と難易度は同期したゲームメニューで選択する。
+OnlineProfile.ReadはローカルEXE・DAT・BGM・MOD DLL・共通オンライン設定をSHA-256で識別し、既知EXEと対応するDAT/BGMの組合せを検証する。既知本体は通常版1.00a・通常版1.00b・Steam版1.00bの3つに限定する。認証後にゲストが自分の機体IDを送り、ホストは双方の機体、プロトコル版、ルール版、入力遅延、乱数seed、セッションID、既知build ID、資産と依存DLLの識別値をmanifestへ含める。ゲストは自分の機体が保持されていることを確認し、manifest全体のハッシュへ応答する。OnlineProfile.ValidateRulesはルール版4以外をセッション準備前に拒否する。NetBridgeはIPC offset76へ4を書き、native lockstep.Initializeも4以外をフック設置前に拒否する。難易度・開始面は同期したゲームメニューで選択する。
 
 通常版1.00bとSteam版1.00bは、正常起動後のゲームコードとデータが一致するため混在を許可する。比較前に双方のbuild IDとEXE hashを既知プロファイルへ照合し、そのうえで同じエンジン版・DAT・BGM・MOD DLL・設定・依存関係の識別値を要求する。build IDを名乗るだけで任意のEXEを許可する処理ではない。1.00aと1.00bの混在は拒否する。根拠は[本体比較](version-layout-audit.md)に記録する。
 
 依存DLLのローカル許可リストは`d3dx9_40.dll`。存在する場合はそのhash、存在しない場合は`system`という識別子を依存関係digestへ含め、相手からファイル名を受け取らない。`system`同士の一致は両PCにインストールされたシステムDLL全体の一致を証明しない。
 
-作業領域はローカルのゲーム配置を基準にsessions/セッションID/hostまたはguestへ作る。IDは固定長バイナリの16進表現で、相手が送った任意パスを解釈しない。EXE・DAT・BGM・許可されたローカル依存DLLはローカルのハードリンクまたはコピーを使用し、スコア・リプレイ・オフライン設定を持ち込まない。Steam用の作業領域には固定のApp ID `1100160`を使用し、正常なSteam起動と所有確認を保持する。相手からゲーム資産やDLLを取得する処理はない。
+作業領域はローカルのゲーム配置を基準にsessions/セッションID/hostまたはguestへ作る。IDは固定長バイナリの16進表現で、相手が送った任意パスを解釈しない。EXE・DAT・BGM・許可されたローカル依存DLLはローカルのハードリンクまたはコピーを使用し、スコア・リプレイを持ち込まない。設定は共通テンプレートへ各PCの表示・音声・入力項目だけを重ねる。PC固有の項目は相手へ送らず、設定一致のハッシュから除外する。共通・未分類項目は正規化と照合の対象とする。Steam用の作業領域には固定のApp ID `1100160`を使用し、正常なSteam起動と所有確認を保持する。相手からゲーム資産やDLLを取得する処理はない。
 
 オフライン・オンラインともゲームをCREATE_SUSPENDEDで生成する。ローカルの16バイト起動mapping `Local\TH12CoopBoot_<pid>` にmagic `0x42323154`、版1、CreateProcessが返したprimary thread ID、early flag1を置く。coop_boot.Initializeは内容とスレッドの所属プロセスを照合する。既存のネットワーク診断には、同じearly起動を使う有効なNet IPC offset92からの互換経路がある。通常のオフライン起動はBoot16なしでは拒否する。これは起動順序の契約であり、同一ユーザーの悪意あるプロセスを隔離する認証ではない。
 

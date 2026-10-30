@@ -5,6 +5,8 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        if (args.Any(argument => argument is "--lockstep-test" or "--disconnect-test" or "--offline-start-test" or "--owner-exit-test" or "--startup-guard-test"))
+            Native.SetErrorMode(0x8003); // Process-only; owned children inherit noninteractive loader errors.
         if (args.Contains("--self-test"))
             return SelfTests.Run().GetAwaiter().GetResult();
         if (args.Contains("--managed-audit-test"))
@@ -17,7 +19,9 @@ internal static class Program
         if (args.Contains("--lockstep-test") || args.Contains("--disconnect-test"))
             return SelfTests.Lockstep(Option(args, "--game") ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "game")),
                 Option(args, "--native"), int.TryParse(Option(args, "--seconds"), out var seconds) ? Math.Clamp(seconds, 20, 300) : 60,
-                args.Contains("--disconnect-test"), Option(args, "--guest-game")).GetAwaiter().GetResult();
+                args.Contains("--disconnect-test"), Option(args, "--guest-game"),
+                int.TryParse(Option(args, "--p1"), out var p1) ? p1 : 0,
+                int.TryParse(Option(args, "--p2"), out var p2) ? p2 : 5).GetAwaiter().GetResult();
         if (args.Contains("--startup-guard-test"))
             return SelfTests.StartupGuard(Option(args, "--game") ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "game"))).GetAwaiter().GetResult();
         if (args.Contains("--offline-start-test"))

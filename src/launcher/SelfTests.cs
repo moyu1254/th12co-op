@@ -18,12 +18,15 @@ internal static partial class SelfTests
         var token = lifetime.Token;
         try
         {
+            RunInputTests(passed);
+            await LocalConfigurationTests(passed, token);
             using var identity = RoomIdentity.Create();
             var parsed = RoomIdentity.Parse(identity.Invite);
             Expect(parsed.CertificateHash.Length == 32 && parsed.Capability.Length == 32, "invite strength");
             CryptographicOperations.ZeroMemory(parsed.Capability);
             ExpectThrows<ArgumentException>(() => RoomIdentity.Parse("bad"));
             ExpectThrows<ArgumentException>(() => RoomIdentity.Parse("T12L2." + identity.Invite[6..]));
+            ExpectThrows<ArgumentException>(() => RoomIdentity.Parse("T12L3." + identity.Invite[6..]));
             passed.Add("Versioned pinned certificate invite + independent 256-bit guest capability");
 
             foreach (var build in GameBuild.Supported) Expect(GameBuild.FromHash(build.ExeHash.ToUpperInvariant()) == build, "known game identity");
@@ -130,7 +133,7 @@ internal static partial class SelfTests
             using var wrongIdentity = RoomIdentity.Create();
             await RejectedConnection(identity, wrongIdentity.Invite, token);
             var correct = RoomIdentity.Parse(identity.Invite);
-            var wrongCapability = "T12L3." + Convert.ToBase64String(correct.CertificateHash.Concat(RandomNumberGenerator.GetBytes(32)).ToArray()).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            var wrongCapability = "T12L4." + Convert.ToBase64String(correct.CertificateHash.Concat(RandomNumberGenerator.GetBytes(32)).ToArray()).TrimEnd('=').Replace('+', '-').Replace('/', '_');
             CryptographicOperations.ZeroMemory(correct.Capability);
             await RejectedConnection(identity, wrongCapability, token);
             passed.Add("Wrong TLS certificate pin and wrong guest capability fail closed");

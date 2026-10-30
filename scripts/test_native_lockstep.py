@@ -6,6 +6,7 @@ from ctypes import wintypes as W
 from pathlib import Path
 from probe import Mapping, k, read_process
 from thread_snapshot import snapshot
+from quiet_test import QuietEnvironment, quiet_configuration, quiet_evidence
 ROOT=Path(__file__).resolve().parent.parent
 class Startup(C.Structure):
     _fields_=[('cb',W.DWORD),('reserved',W.LPWSTR),('desktop',W.LPWSTR),('title',W.LPWSTR),('x',W.DWORD),('y',W.DWORD),('xs',W.DWORD),('ys',W.DWORD),('xc',W.DWORD),('yc',W.DWORD),('fill',W.DWORD),('flags',W.DWORD),('show',W.WORD),('reserved2bytes',W.WORD),('reserved2',C.c_void_p),('stdin',W.HANDLE),('stdout',W.HANDLE),('stderr',W.HANDLE)]
@@ -19,29 +20,40 @@ k.TerminateProcess.argtypes=[W.HANDLE,W.UINT];k.TerminateProcess.restype=W.BOOL
 k.WaitForSingleObject.argtypes=[W.HANDLE,W.DWORD];k.WaitForSingleObject.restype=W.DWORD
 
 class NetGame:
-    def __init__(self,folder,seed):
-        self.map=None;self.info=ProcessInfo();self.folder=folder
-        try:self._start(folder,seed)
+    def __init__(self,folder,seed,configuration=None,p1=255,p2=255):
+        self.map=None;self.players=None;self.quiet=None;self.info=ProcessInfo();self.folder=folder
+        try:self._start(folder,seed,configuration,p1,p2)
         except Exception:
             self.close();raise
-    def _start(self,folder,seed):
+    def _start(self,folder,seed,configuration,p1,p2):
         folder=Path(folder).resolve()
         if folder.parent!=ROOT or not folder.name.startswith(('game-test-','game-net-')):
             raise ValueError('Native fixtures require an isolated game-test-* or game-net-* folder in the workspace')
-        (folder/'th12.cfg').write_bytes((ROOT/'profiles/th12-online.cfg').read_bytes())
+        (folder/'th12.cfg').write_bytes(quiet_configuration(configuration if configuration is not None else (ROOT/'profiles/th12-online.cfg').read_bytes()))
         for name in ('scoreth12.dat','score.dat'):
             p=folder/name
             if p.exists():p.unlink()
         startup=Startup();startup.cb=C.sizeof(startup)
+        self.quiet=QuietEnvironment(ROOT);startup.desktop=self.quiet.name
         command=C.create_unicode_buffer('"'+str(folder/'th12.exe')+'"')
         if not k.CreateProcessW(None,command,None,None,False,4,None,str(folder),C.byref(startup),C.byref(self.info)):raise C.WinError(C.get_last_error())
+        self.quiet.assign(self.info.process)
         handle=k.CreateFileMappingW(W.HANDLE(-1),None,4,0,12544,f'Local\\TH12CoopNet_{self.info.pid}')
         if not handle:raise C.WinError(C.get_last_error())
         self.map=Mapping(f'Local\\TH12CoopNet_{self.info.pid}',True);k.CloseHandle(handle)
-        for offset,value in [(0,0x4e323154),(4,1),(8,12544),(12,256),(16,3),(20,seed),(24,k.GetTickCount()),(76,3),(92,self.info.tid)]:self.map.write32(offset,value)
-        result=subprocess.run([str(ROOT/'dist/injector.exe'),'--early',str(self.info.pid),str(self.info.tid),str(ROOT/'dist/th12coop-native.dll')],capture_output=True,text=True,timeout=20)
+        for offset,value in [(0,0x4e323154),(4,1),(8,12544),(12,256),(16,3),(20,seed),(24,k.GetTickCount()),(76,4),(92,self.info.tid)]:self.map.write32(offset,value)
+        if p1 != 255 or p2 != 255:
+            if p1 not in range(6) or p2 not in range(6):raise ValueError('Both player selections must be 0..5')
+            name=f'Local\\TH12CoopPlayers_{self.info.pid}'
+            handle=k.CreateFileMappingW(W.HANDLE(-1),None,4,0,16,name)
+            if not handle:raise C.WinError(C.get_last_error())
+            try:self.players=Mapping(name,True)
+            finally:k.CloseHandle(handle)
+            for offset,value in [(0,0x43323154),(4,1),(8,p1),(12,p2)]:self.players.write32(offset,value)
+        result=subprocess.run([str(ROOT/'dist/injector.exe'),'--early','--quiet-test',str(self.info.pid),str(self.info.tid),str(ROOT/'dist/th12coop-native.dll')],capture_output=True,text=True,timeout=40,creationflags=subprocess.CREATE_NO_WINDOW)
         if result.returncode:
             raise RuntimeError(f'Injection failed: {result.stdout} {result.stderr}')
+        self.quiet_evidence=quiet_evidence(self.info.pid)
         for _ in range(300):
             self.heartbeat()
             if self.header()[8] in (1,5):break
@@ -102,6 +114,11 @@ class NetGame:
                         self.info.thread=None
                     except Exception as error:
                         errors.append(str(error))
+        for name in ('players','quiet'):
+            resource=getattr(self,name,None)
+            if resource:
+                try:resource.close();setattr(self,name,None)
+                except Exception as error:errors.append(f'{name} close: {error}')
         if errors:
             raise RuntimeError('Owned process cleanup failed: '+'; '.join(errors))
 
@@ -152,10 +169,19 @@ def main():
         assert report['stage_frames']>300,report
         report['passed']=True
     except Exception as error:
-        report['threads']=[{'pid':g.info.pid,'threads':snapshot(g.info.pid),'stage_thread':read_process(g.info.pid,0x4cf0d8,32).hex(),'audio_pending':read_process(g.info.pid,0x4d14d4,4).hex()} for g in games]
-        report['error']=str(error);raise
+        report['error']=str(error)
+        report['threads']=[]
+        for g in games:
+            try:report['threads'].append({'pid':g.info.pid,'threads':snapshot(g.info.pid),'stage_thread':read_process(g.info.pid,0x4cf0d8,32).hex(),'audio_pending':read_process(g.info.pid,0x4d14d4,4).hex()})
+            except Exception as detail:report['threads'].append({'pid':g.info.pid,'diagnosticError':str(detail)})
+        raise
     finally:
+        report['quiet']=[]
+        for game in games:
+            try:report['quiet'].append(quiet_evidence(game.info.pid))
+            except OSError:pass
         for game in games:game.close()
+        report['ownedHandlesClosed']=all(not game.info.process and not game.info.thread for game in games)
         (out/'native-pair.json').write_text(json.dumps(report,indent=2),encoding='utf8')
         print(json.dumps({k:v for k,v in report.items() if k not in ('threads','samples')}),flush=True)
 if __name__=='__main__':main()

@@ -101,6 +101,11 @@ static uint32_t EnemyIndex(uintptr_t target){
 static void PlayerHash(Hash& h,unsigned char* p){
  h.word(p?1:0);if(!p)return;auto a=(uintptr_t)p;
  h.words(a+0x97c,0x14);h.word(at<uint32_t>(a+0xa28));
+ // Mixed characters have separate speeds, hit/graze/collection boxes and SHT
+ // headers. These are scalar values; allocation addresses are never hashed.
+ h.words(a+0x990,16);h.words(a+0x9e4,0x24);
+ auto sht=at<uintptr_t>(a+0xa2c);h.word(sht?1u:0u);
+ if(sht)h.words(sht+4,0x24);
  h.words(a+0xa30,12);h.words(a+0xa44,12);h.words(a+0xc400,12);
  h.word(at<uint32_t>(a+0xc414));h.word(at<uint32_t>(a+0xc418));h.word(at<uint32_t>(a+0xc598));
  for(uint32_t n=0;n<256;n++){
@@ -256,8 +261,8 @@ static bool Initialize(void(*writeLog)(const char*)){
  state=(Shared*)MapViewOfFile(mapping,FILE_MAP_ALL_ACCESS,0,0,Bytes);
  if(!state)return false;
  auto& h=state->h;
- if(h.magic!=Magic||h.version!=Version||h.bytes!=Bytes||h.capacity!=Capacity||h.rulesVersion!=3||!(h.flags&1)||(h.flags&~3u)){Fail(6);return false;}
- h.rulesVersion=3;
+ if(h.magic!=Magic||h.version!=Version||h.bytes!=Bytes||h.capacity!=Capacity||h.rulesVersion!=4||!(h.flags&1)||(h.flags&~3u)){Fail(6);return false;}
+ h.rulesVersion=4;
  sprintf_s(name,"Local\\TH12CoopNetRequest_%lu",GetCurrentProcessId());requestEvent=OpenEventA(EVENT_MODIFY_STATE,FALSE,name);
  sprintf_s(name,"Local\\TH12CoopNetCommit_%lu",GetCurrentProcessId());commitEvent=OpenEventA(SYNCHRONIZE,FALSE,name);
  if(h.flags&2){

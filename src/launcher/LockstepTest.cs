@@ -7,7 +7,8 @@ namespace TH12Coop;
 
 internal static partial class SelfTests
 {
-    public static async Task<int> Lockstep(string gameDirectory, string? nativePath, int seconds, bool disconnectTest = false, string? guestGameDirectory = null)
+    public static async Task<int> Lockstep(string gameDirectory, string? nativePath, int seconds, bool disconnectTest = false, string? guestGameDirectory = null,
+        int playerOne = 0, int playerTwo = 5)
     {
         using var lifetime = new CancellationTokenSource();
         using var identity = RoomIdentity.Create();
@@ -23,6 +24,7 @@ internal static partial class SelfTests
         var listening = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         LockstepPeer? hostPeer = null, guestPeer = null;
         var notes = new List<string>();
+        var quiet = new List<QuietTestEvidence>();
         string? failure = null;
         var peerErrors = new List<object>();
         void Status(string prefix, string text)
@@ -35,7 +37,7 @@ internal static partial class SelfTests
             return 1 | direction;
         }
         var host = OnlineSession.Host(gameDirectory, port, identity, 3, text => Status("Host: ", text), lifetime.Token,
-            nativePath, true, frame => Input(true, frame), peer => hostPeer = peer);
+            nativePath, true, frame => Input(true, frame), peer => hostPeer = peer, playerOne);
         Task? guest = null;
         try
         {
@@ -43,11 +45,17 @@ internal static partial class SelfTests
             if (await Task.WhenAny(wait, host) == host) await host;
             await wait;
             guest = OnlineSession.Join(guestGameDirectory, "127.0.0.1", port, identity.Invite, text => Status("Guest: ", text), guestLifetime.Token,
-                nativePath, true, frame => Input(false, frame), peer => guestPeer = peer);
+                nativePath, true, frame => Input(false, frame), peer => guestPeer = peer, playerTwo);
             var duration = Task.Delay(TimeSpan.FromSeconds(seconds), lifetime.Token);
             var finished = await Task.WhenAny(host, guest, duration);
             if (finished != duration) { await finished; failure = "A peer ended before the requested duration."; }
-            else if (disconnectTest)
+            else
+            {
+                foreach (var peer in new[] { hostPeer, guestPeer })
+                    quiet.Add(QuietTestEnvironment.ReadEvidence(peer?.GameProcessId ?? throw new IOException("Game PID was not recorded.")));
+                if (quiet.Any(evidence => !evidence.Passed)) throw new IOException("Quiet/background execution was not confirmed.");
+            }
+            if (finished == duration && disconnectTest)
             {
                 disconnectRequested = true;
                 var stopping = Stopwatch.StartNew();
@@ -88,10 +96,10 @@ internal static partial class SelfTests
             catch (ArgumentException) { return true; }
         }
         var ownedProcessesExited = Exited(hostPeer?.GameProcessId) && Exited(guestPeer?.GameProcessId);
-        var passed = failure == null && Sufficient(hostPeer) && Sufficient(guestPeer) && ownedProcessesExited &&
+        var passed = failure == null && quiet.Count == 2 && quiet.All(evidence => evidence.Passed) && Sufficient(hostPeer) && Sufficient(guestPeer) && ownedProcessesExited &&
             (!disconnectTest || disconnectRequested && disconnectMilliseconds < 10000);
         var result = new { passed, failure, peerErrors, seconds, elapsedMilliseconds = durationClock.ElapsedMilliseconds,
-            protocol = SecureChannel.ProtocolVersion,
+            protocol = SecureChannel.ProtocolVersion, playerOne, playerTwo, quiet,
             hostGame = new { build = hostBuild.Id, exeHash = hostBuild.ExeHash },
             guestGame = new { build = guestBuild.Id, exeHash = guestBuild.ExeHash },
             disconnectTest, disconnectRequested, disconnectMilliseconds, ownedProcessesExited, host = Summary(hostPeer), guest = Summary(guestPeer), notes,
