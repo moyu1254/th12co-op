@@ -4,9 +4,19 @@ TH12の **通常版1.00a・通常版1.00b・Steam版1.00b** で、2人が別々�
 
 現在のバージョンは **0.2.0（Pre-release）** です。個別機体・ゲームパッド・PC別設定に対応しています。
 
+[ダウンロード](https://github.com/moyu1254/th12co-op/releases/tag/v0.2.0) · [ドキュメント](docs/README.md) · [不具合報告・開発への参加](CONTRIBUTING.md) · [MIT License](LICENSE)
+
+別PC／WAN、物理ゲームパッドの操作・再接続、全機体の組み合わせでの全編クリアは未検証です。確認済みの範囲と制約は [v0.2.0の検証結果](verification/features-v0.2.0/RESULTS.md) を参照してください。
+
 ## 起動
 
 [GitHub Releases](https://github.com/moyu1254/th12co-op/releases) から配布ZIPをダウンロードして展開します。GitHubの「Source code」ZIPには実行用バイナリを含みません。
+
+同じリリースにある `SHA256SUMS-v0.2.0.txt` と、ダウンロードしたZIPのSHA-256を照合できます。
+
+```powershell
+Get-FileHash .\TH12COOP-v0_2_0-Windows.zip -Algorithm SHA256
+```
 
 - `Offline.cmd`：このPCで2人プレイを開始。
 - `Start.cmd`：オフライン、オンラインの部屋作成、オンライン参加を選択。
@@ -85,11 +95,14 @@ Steam版は専用コピーにTH12のApp IDを設定し、正規のSteam起動処
 必要な環境はVisual Studio C++ Build Tools（x86）、Windows SDK、.NET 10 SDK、PowerShellです。自己完結版は.NET 10 LTSのランタイムを同梱します。
 
 ```powershell
-cd D:\TH12CO-OP
-.\scripts\Prepare-Game.ps1
+git clone https://github.com/moyu1254/th12co-op.git
+cd th12co-op
+.\scripts\Test-Repository.ps1
 .\build.ps1 -SelfContained
-.\dist\TH12Coop.exe --self-test
+.\scripts\Test-Repository.ps1 -RunSelfTest
 ```
+
+ビルドと自己テストに原作データは不要です。ソースを取得するブランチとバージョン別の検証記録は [開発ガイド](docs/development.md) で確認してください。
 
 実ゲーム検証用の `th12coop-smoke.dll` は通常DLLと別ファイルです。メニュー入力の自動化に加え、資源・衝突・アイテムなどの境界条件を作る診断機能を含みます。入力だけで操作する試験と、ゲーム内状態を意図的に変更する診断試験は区別しています。診断には破棄可能な専用コピーを使い、通常プレイ用フォルダーでは実行しないでください。通常DLLにはこの診断用インターフェースを含めず、オンライン入力は認証済みセッションの確定フレームに限って適用します。
 
@@ -101,9 +114,6 @@ cd D:\TH12CO-OP
 
 実装の説明は [エンジン接続](docs/native-engine.md)、共有メモリの仕様は [Native IPC](docs/native-ipc.md) を参照してください。実施済みの試験、使用バイナリと残る制約は [検証結果](verification/RESULTS.md) に集約します。診断用の無敵・火力強化による面進行確認を、通常難易度でのクリア実績とは扱いません。
 
-## 資料と権利
+## ライセンス
 
-- 原作：上海アリス幻樂団 / ZUN。
-- 関数・構造の照合資料：[exphp-share/th-re-data](https://github.com/exphp-share/th-re-data)、[touhouworldcup/thprac](https://github.com/touhouworldcup/thprac)。各対応版のアドレスは手元のEXEの命令で別途照合しています。
-
-ゲーム本体・画像・音声はこのMODのソースではありません。`game/`、`artifacts/`、`research/` をソース公開に含めないでください。
+本プロジェクトのソースコードとドキュメントは [MIT License](LICENSE) で提供します。原作は上海アリス幻樂団 / ZUNの作品で、本MODは非公式です。原作データは含みません。同梱ランタイムと参照資料の扱いは [権利と参照資料](NOTICE.md) を参照してください。

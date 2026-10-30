@@ -13,12 +13,13 @@ from pathlib import Path
 import re
 import stat
 import struct
+import subprocess
 import unicodedata
 import zipfile
 import zlib
 
 ROOT = Path(__file__).resolve().parent.parent
-ROOT_FILES = ("README.md", "Start.cmd", "Offline.cmd", "build.ps1")
+ROOT_FILES = ("README.md", "LICENSE", "NOTICE.md", "CONTRIBUTING.md", "Start.cmd", "Offline.cmd", "build.ps1")
 SOURCE_DIRS = ("src", "scripts", "docs", "licenses", "profiles", "verification")
 REQUIRED_FILES = {"dist/TH12Coop.exe", "dist/TH12Coop.dll", "dist/th12coop-native.dll", "dist/injector.exe",
                   "dist/th12-online.cfg", "dist/coreclr.dll", "dist/TH12Coop.runtimeconfig.json",
@@ -93,22 +94,27 @@ def expected_manifest():
             directories.add(parent.as_posix())
             parent = parent.parent
 
-    def walk(path, source=False):
+    def walk(path):
         regular(path, True)
         for child in sorted(path.iterdir()):
             if not visible(child):
                 continue
-            if source and child.name.casefold() in EXCLUDED and child.is_dir():
-                continue
             regular(child, child.is_dir())
             if child.is_dir():
-                if not source:
-                    directories.add(child.relative_to(ROOT).as_posix())
-                walk(child, source)
+                directories.add(child.relative_to(ROOT).as_posix())
+                walk(child)
             else:
                 add(child)
 
-    for name in ROOT_FILES:
+    tracked = subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z", "--", *ROOT_FILES, *SOURCE_DIRS],
+                             capture_output=True, check=True).stdout.decode("utf-8").split("\0")
+    require(any(tracked), "Packaging requires tracked source files")
+    for name in filter(None, tracked):
+        safe_path(name)
+        path = ROOT
+        for part in name.split("/")[:-1]:
+            path = path / part
+            regular(path, True)
         add(ROOT / name)
     dist = ROOT / "dist"
     regular(dist, True)
@@ -123,13 +129,10 @@ def expected_manifest():
             if any(fnmatch.fnmatchcase(name, pattern) for pattern in ("*-test-*", "*-test.*", "*-results.*", "*-smoke*", "*.pdb")):
                 continue
             add(child)
-    for name in SOURCE_DIRS:
-        source = ROOT / name
-        if source.exists():
-            walk(source, True)
     require(len(files) <= MAX_ENTRIES, "Too many expected files")
     require(len({name.casefold() for name in files}) == len(files), "Case-colliding source paths")
-    require(REQUIRED_FILES <= files.keys(), f"Required distribution inputs are missing: {sorted(REQUIRED_FILES - files.keys())}")
+    required = REQUIRED_FILES | set(ROOT_FILES)
+    require(required <= files.keys(), f"Required distribution inputs are missing: {sorted(required - files.keys())}")
     return files, directories
 
 
@@ -280,7 +283,7 @@ def main():
     try:
         verify(archive, report)
         report["passed"] = True
-    except (InvalidPackage, OSError, ValueError, KeyError, TypeError, zipfile.BadZipFile, zlib.error, RuntimeError) as error:
+    except (InvalidPackage, OSError, ValueError, KeyError, TypeError, zipfile.BadZipFile, zlib.error, RuntimeError, subprocess.CalledProcessError) as error:
         report["error"] = str(error)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

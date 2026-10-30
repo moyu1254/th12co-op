@@ -36,3 +36,7 @@ jobs:
         run: python scripts/test_native_cleanup.py --out build/native-cleanup-results.json
       - name: Verify smoke tools reject non-fixture folders before writing
         run: python scripts/test_smoke_paths.py --out build/smoke-paths-results.json
+      - name: Verify smoke-process exit races with fake APIs
+        run: python scripts/test_smoke_cleanup.py
+      - name: Verify release source boundaries with disposable files
+        run: python scripts/test_package.py

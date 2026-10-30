@@ -3,6 +3,10 @@ param([string]$Name = 'TH12COOP-Lockstep-Windows')
 $ErrorActionPreference = 'Stop'
 if ($Name -notmatch '^[A-Za-z0-9_-]+$') { throw 'Use a simple archive name.' }
 $projectRoot = Split-Path $PSScriptRoot -Parent
+& (Join-Path $PSScriptRoot 'Test-Repository.ps1')
+$sourceRoots = @('README.md','LICENSE','NOTICE.md','CONTRIBUTING.md','Start.cmd','Offline.cmd','build.ps1','src','scripts','docs','licenses','profiles','verification')
+$sourceFiles = ((& git -C $projectRoot ls-files -z -- @sourceRoots) -join "`n").Split([char]0, [StringSplitOptions]::RemoveEmptyEntries)
+if ($LASTEXITCODE -ne 0 -or $sourceFiles.Count -eq 0) { throw 'Packaging requires a Git checkout with tracked source files.' }
 $distRoot = Join-Path $projectRoot 'dist'
 foreach ($file in @('TH12Coop.exe','TH12Coop.dll','th12coop-native.dll','injector.exe','th12-online.cfg','coreclr.dll')) {
     if (-not (Test-Path -LiteralPath (Join-Path $distRoot $file))) { throw 'Run build.ps1 -SelfContained first.' }
@@ -18,19 +22,10 @@ foreach ($file in Get-ChildItem -LiteralPath $distRoot -File) {
 foreach ($directory in Get-ChildItem -LiteralPath $distRoot -Directory) {
     Copy-Item -LiteralPath $directory.FullName -Destination (Join-Path $packageDist $directory.Name) -Recurse
 }
-foreach ($nameToCopy in @('README.md','Start.cmd','Offline.cmd','build.ps1')) {
-    Copy-Item -LiteralPath (Join-Path $projectRoot $nameToCopy) -Destination (Join-Path $packageRoot $nameToCopy)
-}
-foreach ($relative in @('src','scripts','docs','licenses','profiles','verification')) {
-    $sourceRoot = Join-Path $projectRoot $relative
-    if (-not (Test-Path -LiteralPath $sourceRoot)) { continue }
-    foreach ($file in Get-ChildItem -LiteralPath $sourceRoot -Recurse -File) {
-        $pathWithinRoot = $file.FullName.Substring($projectRoot.TrimEnd('\').Length + 1)
-        if ($pathWithinRoot -match '\\(bin|obj|__pycache__)\\') { continue }
-        $target = Join-Path $packageRoot $pathWithinRoot
-        [IO.Directory]::CreateDirectory((Split-Path $target -Parent)) | Out-Null
-        Copy-Item -LiteralPath $file.FullName -Destination $target
-    }
+foreach ($relative in $sourceFiles) {
+    $target = Join-Path $packageRoot $relative
+    [IO.Directory]::CreateDirectory((Split-Path $target -Parent)) | Out-Null
+    Copy-Item -LiteralPath (Join-Path $projectRoot $relative) -Destination $target
 }
 $releaseRoot = Join-Path $projectRoot 'release'
 [IO.Directory]::CreateDirectory($releaseRoot) | Out-Null

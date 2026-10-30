@@ -1,6 +1,6 @@
 # TH12 CO-OP threat model
 
-評価日: 2026-10-29。対象: D:/TH12CO-OP。実装の詳しい制限・接続方式は[通信設計](network-security-design.md)、最終試験の記録は[検証結果](../verification/RESULTS.md)を参照する。
+評価日: 2026-10-29。対象: TH12 CO-OP。実装の詳しい制限・接続方式は[通信設計](network-security-design.md)、最終試験の記録は[検証結果](../verification/RESULTS.md)を参照する。
 
 2026-10-30追記: 以下の評価時点はRules 3 / Protocol 3。現在の実装はRules 4 / Protocol 4 (`T12L4`)で、認証後の機体選択、マニフェストによる双方の選択確定、PC固有設定と共通設定の分離を追加した。新しい境界・形式は[現行通信設計](network-security-design.md)と[PC別設定](local-configuration.md)を参照。旧番号の記述を現行の接続仕様と扱わない。
 
