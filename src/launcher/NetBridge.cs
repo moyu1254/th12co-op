@@ -6,7 +6,7 @@ internal readonly record struct GameDigest(uint Frame, uint Low, uint High, uint
 
 internal sealed class NetBridge : IDisposable
 {
-    internal const uint Magic = 0x4e323154, Version = 1, Size = 12544, Capacity = 256, RulesVersion = 5;
+    internal const uint Magic = 0x4e323154, Version = 1, Size = 12544, Capacity = 256, RulesVersion = 6;
     private readonly MemoryMappedFile mapping;
     private readonly MemoryMappedViewAccessor memory;
     private readonly System.Threading.Timer heartbeat;
@@ -24,8 +24,9 @@ internal sealed class NetBridge : IDisposable
     public uint[] Components() => Enumerable.Range(0, 6).Select(index => memory.ReadUInt32(96 + index * 4)).ToArray();
     public bool DeviceReady => memory.ReadUInt32(88) == 1;
 
-    public NetBridge(int pid, uint seed, bool testInstance, uint primaryThreadId = 0, InputBindingProfile? input = null)
+    public NetBridge(int pid, uint seed, bool testInstance, uint primaryThreadId = 0, InputBindingProfile? input = null, uint localPlayer = 1)
     {
+        if (localPlayer is < 1 or > 2) throw new ArgumentOutOfRangeException(nameof(localPlayer));
         if (input != null) localInput = new LocalInputReader(input, pid);
         mapping = MemoryMappedFile.CreateNew($"Local\\TH12CoopNet_{pid}", Size);
         memory = mapping.CreateViewAccessor(0, Size);
@@ -34,6 +35,7 @@ internal sealed class NetBridge : IDisposable
         memory.Write(0, Magic); memory.Write(4, Version); memory.Write(8, Size); memory.Write(12, Capacity);
         memory.Write(16, testInstance ? 3u : 1u); memory.Write(20, seed); memory.Write(76, RulesVersion);
         memory.Write(92, primaryThreadId);
+        memory.Write(120, localPlayer);
         memory.Write(24, unchecked((uint)Environment.TickCount));
         heartbeat = new System.Threading.Timer(_ =>
         {

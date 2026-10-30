@@ -48,7 +48,8 @@ def main():
              [(1, 6, 1), (1, 7, 0)] + [(3, case, 0) for case in range(1, 20)] +
              [(2, case, 0) for case in range(101, 106)] +
              [(1, case, shot) for case in range(8, 12) for shot in range(6)] +
-             [(1, 12, 0)] + [(5, case, 0) for case in range(1, 8)])
+             [(1, 12, 0)] + [(1, case, 0) for case in range(13, 21)] +
+             [(5, case, 0) for case in range(1, 8)])
     binary = ROOT / 'dist/th12coop-smoke.dll'
     binary_hash = sha(binary)
     sources = {str(p.relative_to(ROOT)).replace('\\', '/'): sha(p)

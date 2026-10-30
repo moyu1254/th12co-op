@@ -120,6 +120,20 @@ internal static partial class SelfTests
             ExpectThrows<IOException>(() => bridge.LocalInput(1));
             return Task.CompletedTask;
         });
+        await Check("Local presentation role is published independently of synchronized input", () =>
+        {
+            ExpectThrows<ArgumentOutOfRangeException>(() => new NetBridge(Environment.ProcessId, 123, true, localPlayer: 0));
+            ExpectThrows<ArgumentOutOfRangeException>(() => new NetBridge(Environment.ProcessId, 123, true, localPlayer: 3));
+            for (uint role = 1; role <= 2; role++)
+            {
+                using var bridge = new NetBridge(Environment.ProcessId, 123, true, localPlayer: role);
+                using var mapping = MemoryMappedFile.OpenExisting($"Local\\TH12CoopNet_{Environment.ProcessId}");
+                using var memory = mapping.CreateViewAccessor();
+                Expect(memory.ReadUInt32(120) == role, "local presentation role was lost");
+                Expect(memory.ReadUInt32(76) == NetBridge.RulesVersion, "rules version was lost");
+            }
+            return Task.CompletedTask;
+        });
         await Check("Cleanup preserves the first native abort reason", () =>
         {
             using var bridge = new NetBridge(Environment.ProcessId, 123, true);

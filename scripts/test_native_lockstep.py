@@ -20,13 +20,13 @@ k.TerminateProcess.argtypes=[W.HANDLE,W.UINT];k.TerminateProcess.restype=W.BOOL
 k.WaitForSingleObject.argtypes=[W.HANDLE,W.DWORD];k.WaitForSingleObject.restype=W.DWORD
 
 class NetGame:
-    def __init__(self,folder,seed,configuration=None,p1=255,p2=255,native='th12coop-native.dll'):
+    def __init__(self,folder,seed,configuration=None,p1=255,p2=255,native='th12coop-native.dll',local_player=1):
         self.map=None;self.players=None;self.quiet=None;self.info=ProcessInfo();self.folder=folder
         self.native=native
-        try:self._start(folder,seed,configuration,p1,p2)
+        try:self._start(folder,seed,configuration,p1,p2,local_player)
         except Exception:
             self.close();raise
-    def _start(self,folder,seed,configuration,p1,p2):
+    def _start(self,folder,seed,configuration,p1,p2,local_player):
         folder=Path(folder).resolve()
         if folder.parent!=ROOT or not folder.name.startswith(('game-test-','game-net-')):
             raise ValueError('Native fixtures require an isolated game-test-* or game-net-* folder in the workspace')
@@ -42,7 +42,7 @@ class NetGame:
         handle=k.CreateFileMappingW(W.HANDLE(-1),None,4,0,12544,f'Local\\TH12CoopNet_{self.info.pid}')
         if not handle:raise C.WinError(C.get_last_error())
         self.map=Mapping(f'Local\\TH12CoopNet_{self.info.pid}',True);k.CloseHandle(handle)
-        for offset,value in [(0,0x4e323154),(4,1),(8,12544),(12,256),(16,3),(20,seed),(24,k.GetTickCount()),(76,5),(92,self.info.tid)]:self.map.write32(offset,value)
+        for offset,value in [(0,0x4e323154),(4,1),(8,12544),(12,256),(16,3),(20,seed),(24,k.GetTickCount()),(76,6),(92,self.info.tid),(120,local_player)]:self.map.write32(offset,value)
         if p1 != 255 or p2 != 255:
             if p1 not in range(6) or p2 not in range(6):raise ValueError('Both player selections must be 0..5')
             name=f'Local\\TH12CoopPlayers_{self.info.pid}'

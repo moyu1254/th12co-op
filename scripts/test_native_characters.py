@@ -210,7 +210,7 @@ def run_case(args, p1, p2):
         raise ValueError('Host and guest fixtures must be separate')
     stage = 7 if args.mode == 'extra' else args.stage
     report = dict(passed=False, p1=p1, p2=p2, mode=args.mode, stage=stage,
-                  rulesVersion=5, exeSha256=[sha256(p / 'th12.exe') for p in (host, guest)],
+                  rulesVersion=6, exeSha256=[sha256(p / 'th12.exe') for p in (host, guest)],
                   nativeSha256=sha256(ROOT / 'dist/th12coop-native.dll'),
                   guardSha256=sha256(ROOT / 'dist/th12coop-quiet-test.dll'),
                   injectorSha256=sha256(ROOT / 'dist/injector.exe'),

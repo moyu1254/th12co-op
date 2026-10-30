@@ -19,7 +19,7 @@ struct Header {
  volatile uint32_t status,requested,consumed,completed,hashLo,hashHi,error,waitSince,p1,p2,threadId,rulesVersion,localMask,localFrame,deviceReady;
  uint32_t primaryThreadId;
  volatile uint32_t components[6];
- uint32_t reserved120[34];
+ uint32_t localPlayer,reserved124[33];
 };
 struct Shared {Header h;Input input[Capacity];Digest digest[Capacity];};
 static_assert(sizeof(Header)==256,"lockstep header ABI");
@@ -33,6 +33,7 @@ static void (*logger)(const char*);
 static uint64_t (*ruleFingerprint)();
 template<class T> static T& at(uintptr_t p){return *reinterpret_cast<T*>(p);}
 static bool Active(){return state&&(state->h.flags&1)!=0;}
+static uint32_t LocalPlayer(){return Active()?state->h.localPlayer:0;}
 static uint32_t PrimaryThread(){return state?state->h.primaryThreadId:0;}
 static void ArmBootstrap(){if(Active())state->h.status=5;}
 static uint32_t InputFor(int player){return player?state->h.p2:state->h.p1;}
@@ -261,8 +262,8 @@ static bool Initialize(void(*writeLog)(const char*)){
  state=(Shared*)MapViewOfFile(mapping,FILE_MAP_ALL_ACCESS,0,0,Bytes);
  if(!state)return false;
  auto& h=state->h;
- if(h.magic!=Magic||h.version!=Version||h.bytes!=Bytes||h.capacity!=Capacity||h.rulesVersion!=5||!(h.flags&1)||(h.flags&~3u)){Fail(6);return false;}
- h.rulesVersion=5;
+ if(h.magic!=Magic||h.version!=Version||h.bytes!=Bytes||h.capacity!=Capacity||h.rulesVersion!=6||h.localPlayer<1||h.localPlayer>2||!(h.flags&1)||(h.flags&~3u)){Fail(6);return false;}
+ h.rulesVersion=6;
  sprintf_s(name,"Local\\TH12CoopNetRequest_%lu",GetCurrentProcessId());requestEvent=OpenEventA(EVENT_MODIFY_STATE,FALSE,name);
  sprintf_s(name,"Local\\TH12CoopNetCommit_%lu",GetCurrentProcessId());commitEvent=OpenEventA(SYNCHRONIZE,FALSE,name);
  if(h.flags&2){

@@ -264,7 +264,7 @@ internal sealed class LockstepPeer
             sessionDirectory = await profile.Prepare(channel.Session, role, startup.Token);
             await File.WriteAllTextAsync(Path.Combine(sessionDirectory, "session.json"), JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }), startup.Token);
             starting = GameSession.Start(sessionDirectory, true, startup.Token, profile.NativePath, status,
-                new NetworkLaunch(manifest.Seed, testInstance, created => bridge = created), players: manifest.Players);
+                new NetworkLaunch(manifest.Seed, testInstance, created => bridge = created, role), players: manifest.Players);
             if (await Task.WhenAny(starting, receiver) == receiver) await receiver;
             game = await starting;
             GameProcessId = game.Process.Id;

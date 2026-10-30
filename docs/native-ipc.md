@@ -1,6 +1,6 @@
 # Native IPC version 1
 
-The local launcher/DLL ABI remains version **1**, cooperative rules are **5**, and network protocol is **4** (`T12L4` invitations). These version numbers have separate purposes. All three known executable profiles use this layout. The current behavior is defined by [the cooperative rules](cooperative-rules.md) and [engine integration](native-engine.md); executed tests belong in [verification/RESULTS.md](../verification/RESULTS.md).
+The local launcher/DLL ABI remains version **1**, cooperative rules are **6**, and network protocol is **4** (`T12L4` invitations). These version numbers have separate purposes. All three known executable profiles use this layout. The current behavior is defined by [the cooperative rules](cooperative-rules.md) and [engine integration](native-engine.md); executed tests belong in [verification/RESULTS.md](../verification/RESULTS.md).
 
 Both offline and online startup use a suspended process and early injection. IPC carries startup metadata, controls and state digests. There are no video/audio capture or transport mappings. Integers below are little-endian 32-bit values unless identified as floats.
 
@@ -59,11 +59,12 @@ The launcher creates `Local\TH12CoopNet_<pid>` before loading the DLL. Its 12,54
 | 48 / 52 | Latest digest low/high words |
 | 56 / 60 | Native error and start time of the current input wait |
 | 64 / 68 | Committed P1/P2 masks |
-| 72 / 76 | Native simulation thread ID and required cooperative rules version 3 |
+| 72 / 76 | Native simulation thread ID and required cooperative rules version 6 |
 | 80 / 84 | Protocol input mask converted from the local device word (`physical & 0x1fb`) and its frame number |
 | 88 | D3D device initialized |
 | 92 | Primary game thread ID from `CreateProcess`; agrees with boot metadata |
 | 96..116 | Diagnostic component hashes: globals, P1, P2, enemies, bullets/items/lasers, menus |
+| 120 | Local player: host 1, guest 2. Required under Rules 6; used only for local presentation, excluded from digests |
 
 Flag 1 enables lockstep. Flag 2 additionally namespaces the original `Touhou 12 App` singleton mutex for the explicit same-PC test harness. Production online sessions do not set flag 2. Other bits are rejected.
 
@@ -78,6 +79,8 @@ Native errors 1–7 cover heartbeat/abort, input timeout, unstable input sequenc
 Errors 15–17 cover a wrong-thread/reentered Steam seed fence, inability to arm/restore its clock import, and game-hook installation failure at that fence. Status 5 permits normal Steam startup to resume; it does not authorize commits or advertise device readiness. The exact return address and verified primary-thread identity gate installation, as described above. Offline failures are also reported through the 64-byte status field because offline has no network mapping.
 
 ## Smoke-only destructive audit commands
+
+Read-only rendering observations are available separately at `Local\TH12CoopVisuals_<pid>` (40 bytes): magic `0x56323154`, version 1, local player (0 offline, 1 host, 2 guest), reserved word, P1/P2 marker draw counts, P1/P2 skipped-marker counts, and P1/P2 ARGB body colors submitted to native drawing. The game never consumes values from this observation mapping. Counts describe draw calls, not a screenshot inspection. Offline keeps both markers; online suppresses only the remote actor's marker.
 
 Only `th12coop-smoke.dll` creates `Local\TH12CoopAudit_<pid>`. Its 256-byte layout is magic `0x41423154` / version 1 at +0/+4, command sequence/completed sequence at +8/+12, family/case/result/reserved at +16/+20/+24/+28, and 32 detail words at +32. The rest is reserved. Publish family/case first and sequence last. Commands execute on the game thread before P1's actor pass; completion is published after result/details.
 

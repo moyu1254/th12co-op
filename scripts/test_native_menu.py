@@ -65,7 +65,7 @@ def enter(pair, mode, shots, cancel=False):
 def run(args):
     games, observations = [], []
     pair = None
-    report = dict(passed=False, rulesVersion=5, mode=args.mode, players=[args.p1, args.p2],
+    report = dict(passed=False, rulesVersion=6, mode=args.mode, players=[args.p1, args.p2],
                   nativeSha256=sha256(ROOT / 'dist/th12coop-native.dll'), matchedDigestFrames=0)
     try:
         for folder, role in ((args.host_game, 'host'), (args.guest_game, 'guest')):

@@ -12,7 +12,7 @@ static bool enabled, credit[2], gameOverIssued, suppressBomb;
 // even though native Player ticks run in that fixed order.
 static bool frameOpen, graceAtFrameStart[2];
 static int bombActor=-1;
-static void *deathOriginal, *refillOriginal, *bombStartOriginal, *invulnOriginal, *bombDamageOriginal, *bombCancelOriginal;
+static void *deathOriginal, *bombStartOriginal, *invulnOriginal, *bombDamageOriginal, *bombCancelOriginal;
 static uintptr_t respawnAddress, waitAddress, gameOverAddress, rankResume, damageScaleResume, damageScaleSkip, spellScaleResume, spellScaleSkip;
 template<class T> static T& At(uintptr_t p){return *reinterpret_cast<T*>(p);}
 static unsigned char*& Player(){return At<unsigned char*>(0x4b4514);}
@@ -100,13 +100,6 @@ __declspec(naked) static void RespawnHook(){__asm {
  popad
  xor ebx,ebx
  jmp gameOverAddress
- }}
-__declspec(naked) static void RefillHook(){__asm {
- cmp enabled,0
- jne skip
- jmp refillOriginal
- skip:
- ret
  }}
 __declspec(naked) static void RankHook(){__asm {
  mov eax,dword ptr ds:[0x4b0ccc]
@@ -246,7 +239,6 @@ static void Register(coop_patch::Registry& r){
  spellScaleResume=coop_game::Code(0x413dbd);spellScaleSkip=coop_game::Code(0x413df9);
  const unsigned char death[]={0x51,0x53,0xbb,0x01,0,0,0};
  const unsigned char gate[]={0x33,0xdb,0x39,0x1d,0x98,0x0c,0x4b,0,0x7d,0x20};
- const unsigned char refill[]={0xc7,0x40,0x60,0x02,0,0,0};
  const unsigned char rank[]={0xa1,0xcc,0x0c,0x4b,0,0x40};
  const unsigned char start[]={0x57,0x8b,0x3d,0xc4,0x43,0x4b,0};
  const unsigned char invuln[]={0xa1,0x14,0x45,0x4b,0};
@@ -256,7 +248,6 @@ static void Register(coop_patch::Registry& r){
  const unsigned char spellScaling[]={0x8b,0x40,0x78,0x83,0xf8,0x5d};
  r.Hook100a(0x4381c0,death,sizeof(death),(void*)DeathHook,&deathOriginal);
  r.Hook100a(0x436e7e,gate,sizeof(gate),(void*)RespawnHook);
- r.Hook100a(0x422f40,refill,sizeof(refill),(void*)RefillHook,&refillOriginal);
  r.Hook100a(0x4374ee,rank,sizeof(rank),(void*)RankHook);
  r.Hook100a(0x406bd0,start,sizeof(start),(void*)BombStartHook,&bombStartOriginal);
  r.Hook100a(0x406f40,invuln,sizeof(invuln),(void*)InvulnerabilityHook,&invulnOriginal);

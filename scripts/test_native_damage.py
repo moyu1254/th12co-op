@@ -31,7 +31,7 @@ def run(args):
         raise ValueError('Choose only one diagnostic fixture')
     fixture = args.ufo_fixture or args.campaign_fixture
     native = 'th12coop-smoke.dll' if fixture else 'th12coop-native.dll'
-    report = dict(passed=False, rulesVersion=5, players=[args.p1, args.p2], stage=args.stage,
+    report = dict(passed=False, rulesVersion=6, players=[args.p1, args.p2], stage=args.stage,
                   nativeSha256=sha256(ROOT / 'dist' / native), fixtureMutatesGameplay=fixture, matchedDigestFrames=0,
                   framesObserved=0, categories=[dict(hitFrames=0, reducedFrames=0, bombFrames=0, bothHitFrames=0, spellHitFrames=0, normalHitFrames=0, minFactor=65536) for _ in range(3)], samples=[])
     try:

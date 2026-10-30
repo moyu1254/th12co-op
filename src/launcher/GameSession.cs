@@ -7,7 +7,7 @@ using System.Text;
 
 namespace TH12Coop;
 
-internal sealed record NetworkLaunch(uint Seed, bool TestInstance, Action<NetBridge> BridgeCreated);
+internal sealed record NetworkLaunch(uint Seed, bool TestInstance, Action<NetBridge> BridgeCreated, uint LocalPlayer = 1);
 
 internal sealed class GameSession : IDisposable
 {
@@ -191,7 +191,7 @@ internal sealed class GameSession : IDisposable
             if (network != null)
             {
                 bridge = new NetBridge(process.Id, network.Seed, network.TestInstance, primaryThreadId,
-                    network.TestInstance ? null : InputSettingsStore.Load().PlayerOne);
+                    network.TestInstance ? null : InputSettingsStore.Load().PlayerOne, network.LocalPlayer);
                 network.BridgeCreated(bridge);
             }
             var injection = new ProcessStartInfo(injector)

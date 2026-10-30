@@ -90,14 +90,18 @@ static uint32_t RunResourceAudit(uint32_t caseId,uint32_t* details){
   At<int>(0x4b0c98)=1;At<int>(0x4b0ca0)=0;
   Die(firstActor);check(At<int>(0x4b0c98)==0&&credit[0]&&State(firstActor)==2,0);
   Die(secondActor);check(At<int>(0x4b0c98)==0&&!credit[1]&&State(secondActor)==2,1);
+  check(At<int>(0x4b0ca0)==0,7); // Committed misses alone do not refill.
   Timer(firstActor,30);Tick(firstActor);check(State(firstActor)==0&&!credit[0]&&!gameOverIssued,2);
+  check(At<int>(0x4b0ca0)==2,4); // Native refill on credited respawn.
+  At<int>(0x4b0ca0)=0;
   Timer(secondActor,30);Tick(secondActor);check(State(secondActor)==2&&!gameOverIssued,3);
-  check(At<int>(0x4b0ca0)==0,4); // Neither miss can replenish shared bombs.
+  check(At<int>(0x4b0ca0)==0,8); // Waiting without a reserve does not refill.
   Extend();BeforeTick(firstActor);check(credit[1]&&At<int>(0x4b0c98)==0,5);
   Tick(secondActor);check(State(secondActor)==0&&!credit[1]&&!gameOverIssued,6);
+  check(At<int>(0x4b0ca0)==2,9); // Extend-funded respawn also refills.
   details[1]=At<uint32_t>(0x4b0c98);details[2]=At<uint32_t>(0x4b0ca0);
  }else if(caseId==1){
-  At<int>(0x4b0c98)=0;Die(firstActor);Timer(firstActor,30);Tick(firstActor);
+  At<int>(0x4b0c98)=0;At<int>(0x4b0ca0)=0;Die(firstActor);Timer(firstActor,30);Tick(firstActor);
   check(State(firstActor)==2&&State(secondActor)==1&&!gameOverIssued,0);
   Die(secondActor);Timer(secondActor,29);Timer(firstActor,30);Tick(firstActor);
   check(!gameOverIssued,1);
@@ -105,6 +109,7 @@ static uint32_t RunResourceAudit(uint32_t caseId,uint32_t* details){
   auto gm=At<unsigned char*>(0x4b44e8);check(gm&&(At<uint32_t>((uintptr_t)gm+0x60)&0x10)!=0,3);
   At<int>((uintptr_t)pause+0x14)=123;Tick(firstActor);
   check(At<int>((uintptr_t)pause+0x14)==123,4); // Second gate must not restart game-over.
+  check(At<int>(0x4b0ca0)==0,5); // No respawn, no refill.
   details[1]=At<uint32_t>((uintptr_t)pause+0x14);details[2]=gameOverIssued;
  }else if(caseId==2){
   At<int>(0x4b0ca0)=2;
@@ -245,6 +250,21 @@ static uint32_t RunResourceAudit(uint32_t caseId,uint32_t* details){
    memcpy(details+3+n*3,actual,4);
   }
   At<unsigned char*>(0x4b43b8)=oldAscii;VirtualFree(ascii,0,MEM_RELEASE);
+ }else if(caseId>=13&&caseId<=20){
+  // Both actors must reach the native refill only after a credited respawn.
+  // The native caller replenishes below two and preserves larger reserves.
+  const int initialBombs[]={0,1,2,5};
+  int n=(caseId-13)%2,initial=initialBombs[(caseId-13)/2];
+  auto p=Actor(n);At<int>(0x4b0c98)=1;At<int>(0x4b0ca0)=initial;At<int>(0x4b0ca4)=1;
+  Die(p);
+  check(State(p)==2&&credit[n]&&At<int>(0x4b0c98)==0,0);
+  check(At<int>(0x4b0ca0)==initial&&At<int>(0x4b0ca4)==1,1);
+  details[1]=n;details[2]=initial;details[3]=At<uint32_t>(0x4b0ca0);
+  Timer(p,30);Tick(p);
+  check(State(p)==0&&!credit[n]&&!gameOverIssued,2);
+  check(At<int>(0x4b0ca0)==(initial<2?2:initial)&&At<int>(0x4b0ca4)==1,3);
+  details[4]=At<uint32_t>(0x4b0ca0);details[5]=At<uint32_t>(0x4b0ca4);
+  check(State(Actor(1-n))==1,4);
  }else return 0x20000000u;
  Player()=firstActor;details[28]=State(firstActor);details[29]=State(secondActor);
  details[30]=(uint32_t)OwnStateHash();details[31]=failure;return failure;

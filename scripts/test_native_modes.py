@@ -63,7 +63,7 @@ class Pair:
         completed = self.frame - 1
         digests = [struct.unpack('<8I', game.map.read(4352 + (completed % 256) * 32, 32))
                    for game in self.games]
-        if (any(h[11] != completed or h[19] != 5 for h in headers)
+        if (any(h[11] != completed or h[19] != 6 for h in headers)
                 or any(d[0] != completed for d in digests)
                 or headers[0][12:14] != headers[1][12:14]
                 or digests[0] != digests[1]):
@@ -195,7 +195,7 @@ def run(args):
     hashes = [sha256(folder / 'th12.exe') for folder in (host, guest)]
     if hashes[0] != hashes[1]:
         raise ValueError('This paired native test requires the same executable version')
-    report = {'passed': False, 'mode': args.mode, 'stage': expected_stage, 'rulesVersion': 5,
+    report = {'passed': False, 'mode': args.mode, 'stage': expected_stage, 'rulesVersion': 6,
               'scope': 'Initial paired gameplay; not a full clear or all-spell test',
               'gameFolders': [str(host), str(guest)], 'exeSha256': hashes[0],
               'nativeSha256': sha256(ROOT / 'dist/th12coop-native.dll'),

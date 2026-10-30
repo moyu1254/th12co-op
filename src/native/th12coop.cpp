@@ -54,6 +54,7 @@ static void setInput(int n,uint32_t v){
  previous[n]=v;
 }
 #include "coop_resources.h"
+#include "coop_visuals.h"
 static bool actorEligible(unsigned char* p){return coop_resources::Eligible(p);}
 #include "coop_targeting.h"
 #include "coop_collision.h"
@@ -402,6 +403,7 @@ static bool installHooks(){
  coop_effects::Register(registry);
  coop_scorecompat::Register(registry);
  coop_characters::Register(registry);
+ coop_visuals::Register(registry);
  coop_damage_sources::Register(registry);coop_damage::Register(registry);
  if(!registry.Validate()){
   ipc->status=0x80000001;
@@ -413,6 +415,7 @@ static bool installHooks(){
  if(!registry.Install()){ipc->status=0x80000002;log("Hook installation failed and rolled back");return false;}
  if(logfile)fprintf(logfile,"Verified and installed %zu patch entries\n",registry.Count());
  ipc->status=1;coop_lockstep::Ready();
+ coop_visuals::Initialize();
  log(coop_game::codeShift?"TH12 1.00b cooperative hooks installed":"TH12 1.00a cooperative hooks installed");return true;
 }
 
