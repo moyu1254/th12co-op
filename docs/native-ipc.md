@@ -78,9 +78,11 @@ Native errors 1–7 cover heartbeat/abort, input timeout, unstable input sequenc
 
 Errors 15–17 cover a wrong-thread/reentered Steam seed fence, inability to arm/restore its clock import, and game-hook installation failure at that fence. Status 5 permits normal Steam startup to resume; it does not authorize commits or advertise device readiness. The exact return address and verified primary-thread identity gate installation, as described above. Offline failures are also reported through the 64-byte status field because offline has no network mapping.
 
-## Smoke-only destructive audit commands
+## Rendering observations
 
 Read-only rendering observations are available separately at `Local\TH12CoopVisuals_<pid>` (40 bytes): magic `0x56323154`, version 1, local player (0 offline, 1 host, 2 guest), reserved word, P1/P2 marker draw counts, P1/P2 skipped-marker counts, and P1/P2 ARGB body colors submitted to native drawing. The game never consumes values from this observation mapping. Counts describe draw calls, not a screenshot inspection. Offline keeps both markers; online suppresses only the remote actor's marker.
+
+## Smoke-only destructive audit commands
 
 Only `th12coop-smoke.dll` creates `Local\TH12CoopAudit_<pid>`. Its 256-byte layout is magic `0x41423154` / version 1 at +0/+4, command sequence/completed sequence at +8/+12, family/case/result/reserved at +16/+20/+24/+28, and 32 detail words at +32. The rest is reserved. Publish family/case first and sequence last. Commands execute on the game thread before P1's actor pass; completion is published after result/details.
 
