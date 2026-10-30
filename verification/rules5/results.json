@@ -1,0 +1,935 @@
+{
+  "recordedUtc": "2026-10-30T06:56:24.716307+00:00",
+  "baseCommit": "8e1b80c",
+  "rules": 5,
+  "protocol": 4,
+  "ipc": 1,
+  "scope": "Local isolated Windows tests. No separate physical PC, WAN, full original-difficulty balance comparison or release publication.",
+  "binaries": {
+    "th12coop-native.dll": "95394dd5d354880ae635d570c51f6c7240863481dbd5d469ef2fd669462dc731",
+    "th12coop-smoke.dll": "b7d444564351872ea607b27fe13252fe308c0f410a5a78c51f9d9d01c9abe734",
+    "TH12Coop.exe": "9b19bf4a9a96c7f9455fe868a87b07c2a28af228c2567434ab26fa3187d44376",
+    "TH12Coop.dll": "4e26ba8577003c0f46a8beda08716de5ab09e0884d36c2f2a86e641b4389a5d4",
+    "injector.exe": "ff7bfd2ed14e4efd0ec1513569b393db4dcd3fdb9b56131350179051e8ed48a4",
+    "th12coop-quiet-test.dll": "136a38d319cf6a03e196b621a357dfb6f442a8f8ffd8bd542bd90843f2b9229a"
+  },
+  "sourceSha256": {
+    "build.ps1": "dd53802388a9845f0723d2d594fde8bf4612949417c5186bfbb06ea586f2df3d",
+    "scripts/probe.py": "f2d3ab08951832a1be7362539016b93c6fa917e36b81df475a9300393d9378dc",
+    "scripts/quiet_test.py": "e4efb615728cf510f22baac5c1c8d63a8bafc0f1e738beb3d8f037cefd4eb34b",
+    "scripts/smoke_gameplay.py": "052e9334ebbb5bf079ddeec048998fc242b5c018b854e127865758d0df194eb5",
+    "scripts/smoke_lifecycle.py": "9a5207542f9239c17680478e01bbb97f98f214ac8683ed94771d9d513965e745",
+    "scripts/smoke_p2_collision.py": "c04bc8e694a0534991c90c29ef9570196799c9995edba4c8b4100f5ecb10f078",
+    "scripts/test_cooperative_campaign.py": "2331d7d287338eab5b4bff26e4eab9f7c0283e9a9a088fb00275d7f61a058726",
+    "scripts/test_cooperative_modes.py": "f0deb000f12fa0d53da936e1b9925ff827adf638bff8518d3ec7c761798869f6",
+    "scripts/test_cooperative_regressions.py": "ee7a5582f94badc55dbb7951cdf28a033cbdaae45f5fd03c7f22d4671306ad3a",
+    "scripts/test_cooperative_rules.py": "eec2fc888a6a3454844e1b8913058041d3f6d8a79e0a6acbd8ba5be603c8edee",
+    "scripts/test_loader_fence.py": "2d9c89e95e3176935209cee25c9cee56d495a0b5b80771c2751eca3b19c779e3",
+    "scripts/test_managed_gameplay.py": "c0d7f2fc39f4aff522e4a5a7a82ace4ed27ec7aaef24030b87fd880de66ef74f",
+    "scripts/test_native_characters.py": "59ccd3554c5eb2c07dd35b4278dabf728bb2130b12ba317b3a87ffda556a6d0b",
+    "scripts/test_native_cleanup.py": "8ab0cc6729ddbefbad2f418540e0716a52b63a17dee218509f4805b8088ffd54",
+    "scripts/test_native_damage.py": "80d6af5030d8d5e7e8889b080639ffbe9fb5e6c4fd376a11d7e210f26a14b79a",
+    "scripts/test_native_demo.py": "3657d0f0f491383c5e439c15eba156c002945b8168757bbed3d45b51ac867e5b",
+    "scripts/test_native_lifecycle.py": "826fc9bf9adcc73f957f9653bd8d77f08eec4751cb02b39482ca5aead2cd2e5c",
+    "scripts/test_native_lockstep.py": "09a9bdb44b8d15c7c417400571f51b28031930452f1f3a166daeda09f7a4e2cc",
+    "scripts/test_native_menu.py": "8afebbeddc74aaa8e2ebfab1b78c64f2d9673682c3db920b25b42211a0bcbead",
+    "scripts/test_native_modes.py": "0cc2a161552fb84fbfd177bf0daeb79e81a469e8042cb9b6e5dd28839dfd7e87",
+    "scripts/test_offline_selection.py": "b21aca727fd7cd9a67a87165472afe65916d332fb3a9504be206fb94821b653e",
+    "scripts/test_package.py": "3cdd863f6e849a45a9a5fd70fff358042b3e81c34069a3e0cf3365c4ab218f53",
+    "scripts/test_smoke_cleanup.py": "53bf030ff86170d6374e4bc4d3f9dad7ada393e168fd66a2d7ab91789214fb56",
+    "scripts/test_smoke_paths.py": "9386ddf37c356a93d8afff065f23c4e36f211ab9487b1b11202e1f1bced3de35",
+    "scripts/thread_snapshot.py": "21599e310cfa4d42f270fce8bddaab57f35b0c0b1baf1b6116d6c319464db9e9",
+    "scripts/verify_damage_layout.py": "15fc2fe89c62599e50edd35d9267cbdb5af45048c9728f853840fdfedd5ad994",
+    "scripts/verify_package.py": "8dfb22fcaa327b1ca2975024f9114a99ac42d11232164dff199d709ea04aae45",
+    "src/launcher/GameBuild.cs": "4d5f5bec7a9c9cecee98afa67b506abcbc3478c21a273206907759168d2532f7",
+    "src/launcher/GameConfiguration.cs": "defbf80fb4318bf95a7d95ceb16f4d9edc27c28722a166546d5315e375327dad",
+    "src/launcher/GameSession.cs": "1336d107da1f12f2a2731f48902885afe8a144e5ae516f1376ece26d220a8843",
+    "src/launcher/GameSettingsForm.cs": "384408f160828211e3106935df9820043c6614e6ce2cd4939d6a583abac6b5f1",
+    "src/launcher/GameSettingsTests.cs": "f5b8a182c9dde7a085cd6e6a4eb8023f155ee2a87d142dea1dd17255ed95c2f6",
+    "src/launcher/InputSettingsForm.cs": "0816a353c8b1cbac623232c728575dd905d12a1e9b82434576b2a0efe92d3623",
+    "src/launcher/LauncherForm.cs": "a9866314116762550b3f1142099c730da410eedb707abe2df731ba96baf09695",
+    "src/launcher/LocalConfigurationTests.cs": "2f43bcbd861b9b9ed953eec7359882baa673c84872646aad1bca952d21b2a4c0",
+    "src/launcher/LocalInput.cs": "9670c47862c7fc36782464c9af5d04b3aee0ae96006db7d6246c61124a788ac1",
+    "src/launcher/LocalInputTests.cs": "d5c3424cbd3375781ddabbeb775f2d7ceafe109652fba961c7c01c63f56bb438",
+    "src/launcher/LockstepPeer.cs": "ac522075d0fa46471653ec7c7695a0210e1c687cd109a996ac8ab88b20cccab3",
+    "src/launcher/LockstepTest.cs": "591716ed3520c86090d6e90a8c169bf258122b6ced0fd619521dac39c0af44f7",
+    "src/launcher/ManagedAuditTests.cs": "bdd435027f3e792c3627a1d6365f8883426555f39899a9bd94334ff98f25f2a2",
+    "src/launcher/NetBridge.cs": "d7cb383af51a51a431890da51c69c6f96121a0be74f249df265fd692af9347ab",
+    "src/launcher/OnlineProfile.cs": "cfac7b9d7e0367d1be66149158f18a3b282fd850746cba847d8b3063d5a63f75",
+    "src/launcher/OnlineSession.cs": "cf7485073c603b88ee2323a4f1c61399d0ac4a4069c5df1369abec67f548b2eb",
+    "src/launcher/OwnedGameJob.cs": "236c8d9ff7f776aa281bae03a67e5f58172b7897df6d1b0ac0a387e535984c36",
+    "src/launcher/PlayerSelection.cs": "504a7acad902fe9c41ca0fa50d55dad6c408d8a62291991f1fdd8dafa1e2eb13",
+    "src/launcher/Program.cs": "1ec664dd7c397e677b770a165076c96e4f8c3bb92f46be0acd83f06af3de9066",
+    "src/launcher/Protocol.cs": "d6e2e53f16b7d9347aaa37b7974b4f5a80d928452f02c53838da52d49effdecf",
+    "src/launcher/QuietTestEnvironment.cs": "1e78f0236178eb56379f1aeec66d749d0cfa89abd7471d175d2a3c28a9c15888",
+    "src/launcher/SelfTests.cs": "a2b3b1afd53130700d6e789802337002c0188de3e777c570c78bce3e332139f7",
+    "src/launcher/StartupTest.cs": "e3ee6127de7223a48008cb001990f3e45cdbd7bc18fd309bf96c4a973f0072fa",
+    "src/native/coop_audit.h": "9bed7f4a9032c3c3dc2b3f4bb6f969731691fbcf401163e5a77b6845d0d66482",
+    "src/native/coop_audit_bullets.h": "e579a7d808f179277c8b596941639b805d0fbf16a6c8141f7b87045be746c6bb",
+    "src/native/coop_audit_campaign.h": "6dd9887a2e1c7c24022fcf0421c429d0c2f31f5fc7d848e6e06c06289fc98b1f",
+    "src/native/coop_audit_ecl.h": "c7e3a392c093e0e9e063b75f838aec2cb5dd76d30a9d8ae92964079d14e2a47b",
+    "src/native/coop_audit_items.h": "0e2642395f7353cdc8c9614cb1032e215570e0853fec770c158178c11a2e504b",
+    "src/native/coop_audit_resources.h": "962b6ce43806fc6c6295941d4f4692175e40eead9253f7fec9ea7b2f5139b669",
+    "src/native/coop_audit_sync.h": "369d959886f42c5f146d8459b17e607741013c4b57c95e9c4cd6358d1bba0402",
+    "src/native/coop_audit_targeting.h": "b2fa73f5401641d976c3029ad68c92c66620c73dd46a2105f90c0c92606dbe83",
+    "src/native/coop_boot.h": "99e88704df57aac96ec2da968763cc94b5f147b3196156791a502b50e624daa8",
+    "src/native/coop_characters.h": "2aa835d26eee5f738d017e84eaa93d5c90bd84ab8fa741a57a7b62404d2a1580",
+    "src/native/coop_collision.h": "fff9478949e1172996dd3654ab7b5ebedbd8ee6658180eca65424398c79bf43a",
+    "src/native/coop_damage.h": "29814964bb2eba5de85ab1bde8102ef5195b2bb0318b10831ce5b4ae36714325",
+    "src/native/coop_damage_budget.h": "103bfcde01126787a09f8f5c52e1080524e39ca08b765f07471ec4c57406a5ee",
+    "src/native/coop_damage_sources.h": "0d62b31726dd76733c9eeafae380b36a7ce053f3b8ee22bdb44261732d4162bb",
+    "src/native/coop_ecl_digest.h": "2598cac62b8db6f7960a5405940f425d6efadbe22ee8d84500b7a3a635ba3c97",
+    "src/native/coop_effects.h": "04390f6107b2cdccc8c2a8cc956fd0bea38849af10f94f2068324fef10a3098d",
+    "src/native/coop_force.h": "91ede9a2ed8a14f4d9f197b16561aa2f9d3d581cd51144f56a419b94dd1ced27",
+    "src/native/coop_fpu.h": "33044f169a360f32108d7a041ff4488ea9275e2e2301ef213317571caa0415d3",
+    "src/native/coop_homing.h": "85672af42a9e97a462045407767f89da1605f6e56a5220cb785c6994275b043f",
+    "src/native/coop_items.h": "b8f4c07463d6436330b2d669449d932928ba92f5889e7c83f2a3def12061a509",
+    "src/native/coop_progression.h": "eaab0b161f9ad3abd8314fa638f82de1cb7b2d6eac80092ce892a753c1002302",
+    "src/native/coop_projectile_digest.h": "b83f514193af520c7e88b7662e82e9b6a560770b1ba4e524f5eba7e14dfe2953",
+    "src/native/coop_resources.h": "365176b07bdfffc174a9df0c8b5ceeede8241ac9224061f856d4515023698a3d",
+    "src/native/coop_scorecompat.h": "235d1e34c9f6006de8b09887bc9efcbf2519eb714df363070d5bb42bc6ea0e87",
+    "src/native/coop_targeting.h": "d2f3ac50f3b82627c7cd69d2f00983ca565ea5b9171c8ef58a958017580af656",
+    "src/native/damage_budget_test.cpp": "58f2038418282c466547352721784a370201c0e8ffa4b80ff8d9a84c2bf23327",
+    "src/native/fiber_fpu_test.cpp": "878bc5e4bf4bfbbd700f5025bc378db7773fba4d09e747dad80b24975fc2e483",
+    "src/native/game_layout.h": "e2c0b078d6670dd5635488e0e5593d1eec123e170d5513a5b1c8c6fcac858514",
+    "src/native/lockstep.h": "6fb86f203350b324a46e65b9273b5b18b94ff75737f042e694ffaac0caaf3abb",
+    "src/native/patch.h": "9c9f3f7bf21dd2b1c4a625aca9503661e7fb6636ff75d48df1501549f130d3b7",
+    "src/native/th12coop.cpp": "0ebbd05bfcea15fdf89035348089cf81404dee771924c9b4e164b3e1d1eea722"
+  },
+  "launcherSelfTest": {
+    "passed": true,
+    "groups": 19,
+    "checks": [
+      "PASS Local input: keyboard + gamepad merge, rebinding, 32 buttons, six axes/dead zones/inversion, eight POV directions, opposing directions and unfocused/disconnected behavior",
+      "PASS Local input settings: independent profiles and characters persist atomically; malformed settings rejected without overwriting",
+      "PASS Game settings on an STA UI message pump: asynchronous load, form construction, edits, save, reopen and concurrent-field merge without UI blocking",
+      "PASS Local display/audio/input separated from shared simulation settings; invalid settings rejected",
+      "PASS 36 independent player selections published; malformed selection packets rejected",
+      "PASS Local settings persist without importing scores or replacing offline simulation options; cancelled/corrupt writes preserve prior files and muted audio",
+      "PASS Actual TLS negotiation: all 36 player pairs, differing local settings and retail/Steam identities; substituted guest selection, mixed legacy mode and altered offer acknowledgement rejected",
+      "PASS Versioned pinned certificate invite + independent 256-bit guest capability",
+      "PASS Three known profiles accepted; verified retail/Steam 1.00b compatible; 1.00a/1.00b, forged identities and MOD/config/dependency mismatches rejected",
+      "PASS Cooperative rules version, seed, delay and session identity checked; old rules rejected",
+      "PASS Actual TLS 1.3 pinned connection, mutual role/capability binding, duplex records and 4096-byte bound",
+      "PASS Wrong role, wrong session, duplicate/skipped frame and unknown input bit rejected",
+      "PASS Native digest mismatch and authenticated peer heartbeat flood rejected",
+      "PASS Wrong TLS certificate pin and wrong guest capability fail closed",
+      "PASS Negative/zero/oversized record prefix rejected before payload read; protocol mismatch rejected",
+      "PASS Authenticated truncated body rejected and stalled body read cancelled at its deadline",
+      "PASS Actual room admission accepts invited guest while an unauthenticated TLS socket is idle",
+      "PASS Real mapped IPC rejects duplicate/ahead commits and signals native abort",
+      "PASS Managed preparation, asset drift, IPC and actual TLS deadline regression suite",
+      "PASS 19 test groups"
+    ]
+  },
+  "managedAudit": {
+    "passed": true,
+    "filter": null,
+    "groups": 18,
+    "failed": 0,
+    "results": [
+      {
+        "name": "Cancelled Steam identity creation leaves no final file and can retry",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "Cancelled online preparation leaves no final directory and can retry",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "Failed online asset preparation leaves no partially published directory",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "Online sessions exclude clear records and preserve the source save",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "Session settings persist only local fields and keep offline gameplay settings",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "Game assets changed after the manifest was read are rejected",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "Native DLL changed after the manifest was read is rejected",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "Failed startup restores the prior valid configuration exactly",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "Native local-input IPC rejects unsupported bits and unstable frame",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "Cleanup preserves the first native abort reason",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "Initial configuration writes are atomic and preserve existing files",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "A disconnected peer cancels preparation before publishing a session",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "TLS EOF is a transport failure and caller cancellation remains cancellation",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "TLS receive inactivity deadline is reported as timeout, not user cancellation",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "TLS connection and authentication deadlines are reported as timeouts",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "TLS backpressure reaches the production send deadline without an unbounded wait",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "Diagnostic write failure cannot replace a desync error or skip its abort",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "Diagnostic tail write failure cannot replace requested cancellation",
+        "passed": true,
+        "error": null
+      }
+    ],
+    "scope": "Synthetic temporary files, real mapped IPC, and actual loopback TLS with production connect/authentication/send/receive deadlines; no original game assets, native DLL loading, or game processes."
+  },
+  "nativeBuildChecks": {
+    "damageBudget": true,
+    "fiberCallerFpu": true,
+    "quietGuard": true
+  },
+  "pythonRegression": {
+    "ownedCleanup": 10,
+    "quietCleanup": 3,
+    "isolatedPaths": 5,
+    "packaging": 5,
+    "passed": true
+  },
+  "layouts": [
+    {
+      "profile": "retail-1.00a",
+      "exeSha256": "e2939ba3f92e427216a619191a682a8197cc59a64eab99302a7b98811d6120a9",
+      "hooks": 12,
+      "sourceCallers": 6,
+      "unchangedAscii": true,
+      "fullEnemyBossRegistry": true,
+      "passed": true
+    },
+    {
+      "profile": "retail-1.00b",
+      "exeSha256": "d8d644d2e64957a3031b1a1399d0502e1ddaa5252d2c4e492770ad6717827628",
+      "hooks": 12,
+      "sourceCallers": 6,
+      "unchangedAscii": true,
+      "fullEnemyBossRegistry": true,
+      "passed": true
+    }
+  ],
+  "nativeResourceFixtures": {
+    "passed": true,
+    "total": 7,
+    "smoke_sha256": "b7d444564351872ea607b27fe13252fe308c0f410a5a78c51f9d9d01c9abe734",
+    "cases": [
+      {
+        "version": "retail-1.00a",
+        "family": 1,
+        "case": 3,
+        "shot": 0,
+        "passed": true,
+        "failure_mask": "00000000"
+      },
+      {
+        "version": "retail-1.00a",
+        "family": 1,
+        "case": 4,
+        "shot": 0,
+        "passed": true,
+        "failure_mask": "00000000"
+      },
+      {
+        "version": "retail-1.00a",
+        "family": 1,
+        "case": 4,
+        "shot": 1,
+        "passed": true,
+        "failure_mask": "00000000"
+      },
+      {
+        "version": "retail-1.00a",
+        "family": 1,
+        "case": 4,
+        "shot": 2,
+        "passed": true,
+        "failure_mask": "00000000"
+      },
+      {
+        "version": "retail-1.00a",
+        "family": 1,
+        "case": 4,
+        "shot": 3,
+        "passed": true,
+        "failure_mask": "00000000"
+      },
+      {
+        "version": "retail-1.00a",
+        "family": 1,
+        "case": 4,
+        "shot": 4,
+        "passed": true,
+        "failure_mask": "00000000"
+      },
+      {
+        "version": "retail-1.00a",
+        "family": 1,
+        "case": 4,
+        "shot": 5,
+        "passed": true,
+        "failure_mask": "00000000"
+      }
+    ]
+  },
+  "gameTests": [
+    {
+      "test": "damage-b-steam.json",
+      "passed": true,
+      "rulesVersion": 5,
+      "players": [
+        2,
+        3
+      ],
+      "stage": 2,
+      "nativeSha256": "95394dd5d354880ae635d570c51f6c7240863481dbd5d469ef2fd669462dc731",
+      "exeSha256": [
+        "d8d644d2e64957a3031b1a1399d0502e1ddaa5252d2c4e492770ad6717827628",
+        "eb275a8c285fd8450fa5ac79fa730a759aeca8b2904aeb16d30e65859372a459"
+      ],
+      "fixtureMutatesGameplay": false,
+      "matchedDigestFrames": 6622,
+      "framesObserved": 5052,
+      "categories": [
+        {
+          "hitFrames": 449,
+          "reducedFrames": 194,
+          "bombFrames": 32,
+          "bothHitFrames": 101,
+          "spellHitFrames": 263,
+          "normalHitFrames": 186,
+          "minFactor": 39321
+        },
+        {
+          "hitFrames": 576,
+          "reducedFrames": 87,
+          "bombFrames": 124,
+          "bothHitFrames": 20,
+          "spellHitFrames": 0,
+          "normalHitFrames": 576,
+          "minFactor": 41557
+        },
+        {
+          "hitFrames": 0,
+          "reducedFrames": 0,
+          "bombFrames": 0,
+          "bothHitFrames": 0,
+          "spellHitFrames": 0,
+          "normalHitFrames": 0,
+          "minFactor": 65536
+        }
+      ],
+      "totals": [
+        [
+          14318,
+          11849,
+          848,
+          449
+        ],
+        [
+          13689,
+          13110,
+          5136,
+          786
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "quiet": [
+        {
+          "devices": 1,
+          "buffers": 66,
+          "plays": 4042,
+          "failures": 0,
+          "privateDesktop": false,
+          "windows": "hidden-noactivate",
+          "mute": "per-buffer DSBVOLUME_MIN before Play",
+          "nativePlaybackClocks": true,
+          "createdWindows": 1,
+          "blockedDialogs": 0,
+          "graphicsDevices": 1,
+          "visibleOwnedWindows": 0,
+          "ownsForeground": false
+        },
+        {
+          "devices": 1,
+          "buffers": 66,
+          "plays": 4042,
+          "failures": 0,
+          "privateDesktop": false,
+          "windows": "hidden-noactivate",
+          "mute": "per-buffer DSBVOLUME_MIN before Play",
+          "nativePlaybackClocks": true,
+          "createdWindows": 1,
+          "blockedDialogs": 0,
+          "graphicsDevices": 1,
+          "visibleOwnedWindows": 0,
+          "ownsForeground": false
+        }
+      ],
+      "ownedHandlesClosed": true
+    },
+    {
+      "test": "ufo-a.json",
+      "passed": true,
+      "rulesVersion": 5,
+      "players": [
+        0,
+        5
+      ],
+      "stage": 1,
+      "nativeSha256": "b7d444564351872ea607b27fe13252fe308c0f410a5a78c51f9d9d01c9abe734",
+      "exeSha256": [
+        "e2939ba3f92e427216a619191a682a8197cc59a64eab99302a7b98811d6120a9",
+        "e2939ba3f92e427216a619191a682a8197cc59a64eab99302a7b98811d6120a9"
+      ],
+      "fixtureMutatesGameplay": true,
+      "matchedDigestFrames": 1800,
+      "framesObserved": 1200,
+      "categories": [
+        {
+          "hitFrames": 0,
+          "reducedFrames": 0,
+          "bombFrames": 0,
+          "bothHitFrames": 0,
+          "spellHitFrames": 0,
+          "normalHitFrames": 0,
+          "minFactor": 65536
+        },
+        {
+          "hitFrames": 155,
+          "reducedFrames": 20,
+          "bombFrames": 15,
+          "bothHitFrames": 2,
+          "spellHitFrames": 0,
+          "normalHitFrames": 155,
+          "minFactor": 41912
+        },
+        {
+          "hitFrames": 186,
+          "reducedFrames": 186,
+          "bombFrames": 0,
+          "bothHitFrames": 113,
+          "spellHitFrames": 0,
+          "normalHitFrames": 186,
+          "minFactor": 32965
+        }
+      ],
+      "totals": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          2975,
+          2938,
+          2080,
+          186
+        ],
+        [
+          2814,
+          1905,
+          0,
+          186
+        ]
+      ],
+      "quiet": [
+        {
+          "devices": 1,
+          "buffers": 65,
+          "plays": 679,
+          "failures": 0,
+          "privateDesktop": false,
+          "windows": "hidden-noactivate",
+          "mute": "per-buffer DSBVOLUME_MIN before Play",
+          "nativePlaybackClocks": true,
+          "createdWindows": 1,
+          "blockedDialogs": 0,
+          "graphicsDevices": 1,
+          "visibleOwnedWindows": 0,
+          "ownsForeground": false
+        },
+        {
+          "devices": 1,
+          "buffers": 65,
+          "plays": 679,
+          "failures": 0,
+          "privateDesktop": false,
+          "windows": "hidden-noactivate",
+          "mute": "per-buffer DSBVOLUME_MIN before Play",
+          "nativePlaybackClocks": true,
+          "createdWindows": 1,
+          "blockedDialogs": 0,
+          "graphicsDevices": 1,
+          "visibleOwnedWindows": 0,
+          "ownsForeground": false
+        }
+      ],
+      "ownedHandlesClosed": true
+    },
+    {
+      "test": "menu-practice-a.json",
+      "passed": true,
+      "rulesVersion": 5,
+      "players": [
+        0,
+        5
+      ],
+      "mode": "practice",
+      "nativeSha256": "95394dd5d354880ae635d570c51f6c7240863481dbd5d469ef2fd669462dc731",
+      "exeSha256": [
+        "e2939ba3f92e427216a619191a682a8197cc59a64eab99302a7b98811d6120a9",
+        "e2939ba3f92e427216a619191a682a8197cc59a64eab99302a7b98811d6120a9"
+      ],
+      "matchedDigestFrames": 1049,
+      "quiet": [
+        {
+          "devices": 1,
+          "buffers": 65,
+          "plays": 107,
+          "failures": 0,
+          "privateDesktop": false,
+          "windows": "hidden-noactivate",
+          "mute": "per-buffer DSBVOLUME_MIN before Play",
+          "nativePlaybackClocks": true,
+          "createdWindows": 1,
+          "blockedDialogs": 0,
+          "graphicsDevices": 1,
+          "visibleOwnedWindows": 0,
+          "ownsForeground": false
+        },
+        {
+          "devices": 1,
+          "buffers": 65,
+          "plays": 107,
+          "failures": 0,
+          "privateDesktop": false,
+          "windows": "hidden-noactivate",
+          "mute": "per-buffer DSBVOLUME_MIN before Play",
+          "nativePlaybackClocks": true,
+          "createdWindows": 1,
+          "blockedDialogs": 0,
+          "graphicsDevices": 1,
+          "visibleOwnedWindows": 0,
+          "ownsForeground": false
+        }
+      ],
+      "ownedHandlesClosed": true
+    },
+    {
+      "test": "menu-normal-a.json",
+      "passed": true,
+      "rulesVersion": 5,
+      "players": [
+        1,
+        4
+      ],
+      "mode": "normal",
+      "nativeSha256": "95394dd5d354880ae635d570c51f6c7240863481dbd5d469ef2fd669462dc731",
+      "exeSha256": [
+        "e2939ba3f92e427216a619191a682a8197cc59a64eab99302a7b98811d6120a9",
+        "e2939ba3f92e427216a619191a682a8197cc59a64eab99302a7b98811d6120a9"
+      ],
+      "matchedDigestFrames": 907,
+      "quiet": [
+        {
+          "devices": 1,
+          "buffers": 65,
+          "plays": 102,
+          "failures": 0,
+          "privateDesktop": false,
+          "windows": "hidden-noactivate",
+          "mute": "per-buffer DSBVOLUME_MIN before Play",
+          "nativePlaybackClocks": true,
+          "createdWindows": 1,
+          "blockedDialogs": 0,
+          "graphicsDevices": 1,
+          "visibleOwnedWindows": 0,
+          "ownsForeground": false
+        },
+        {
+          "devices": 1,
+          "buffers": 65,
+          "plays": 102,
+          "failures": 0,
+          "privateDesktop": false,
+          "windows": "hidden-noactivate",
+          "mute": "per-buffer DSBVOLUME_MIN before Play",
+          "nativePlaybackClocks": true,
+          "createdWindows": 1,
+          "blockedDialogs": 0,
+          "graphicsDevices": 1,
+          "visibleOwnedWindows": 0,
+          "ownsForeground": false
+        }
+      ],
+      "ownedHandlesClosed": true
+    },
+    {
+      "test": "menu-extra-b-steam.json",
+      "passed": true,
+      "rulesVersion": 5,
+      "players": [
+        2,
+        3
+      ],
+      "mode": "extra",
+      "nativeSha256": "95394dd5d354880ae635d570c51f6c7240863481dbd5d469ef2fd669462dc731",
+      "exeSha256": [
+        "d8d644d2e64957a3031b1a1399d0502e1ddaa5252d2c4e492770ad6717827628",
+        "eb275a8c285fd8450fa5ac79fa730a759aeca8b2904aeb16d30e65859372a459"
+      ],
+      "matchedDigestFrames": 1003,
+      "quiet": [
+        {
+          "devices": 1,
+          "buffers": 65,
+          "plays": 97,
+          "failures": 0,
+          "privateDesktop": false,
+          "windows": "hidden-noactivate",
+          "mute": "per-buffer DSBVOLUME_MIN before Play",
+          "nativePlaybackClocks": true,
+          "createdWindows": 1,
+          "blockedDialogs": 0,
+          "graphicsDevices": 1,
+          "visibleOwnedWindows": 0,
+          "ownsForeground": false
+        },
+        {
+          "devices": 1,
+          "buffers": 65,
+          "plays": 97,
+          "failures": 0,
+          "privateDesktop": false,
+          "windows": "hidden-noactivate",
+          "mute": "per-buffer DSBVOLUME_MIN before Play",
+          "nativePlaybackClocks": true,
+          "createdWindows": 1,
+          "blockedDialogs": 0,
+          "graphicsDevices": 1,
+          "visibleOwnedWindows": 0,
+          "ownsForeground": false
+        }
+      ],
+      "ownedHandlesClosed": true
+    },
+    {
+      "test": "characters-a/practice-1-0-5.json",
+      "passed": true,
+      "rulesVersion": 5,
+      "p1": 0,
+      "p2": 5,
+      "mode": "practice",
+      "stage": 1,
+      "nativeSha256": "95394dd5d354880ae635d570c51f6c7240863481dbd5d469ef2fd669462dc731",
+      "guardSha256": "136a38d319cf6a03e196b621a357dfb6f442a8f8ffd8bd542bd90843f2b9229a",
+      "injectorSha256": "ff7bfd2ed14e4efd0ec1513569b393db4dcd3fdb9b56131350179051e8ed48a4",
+      "exeSha256": [
+        "e2939ba3f92e427216a619191a682a8197cc59a64eab99302a7b98811d6120a9",
+        "e2939ba3f92e427216a619191a682a8197cc59a64eab99302a7b98811d6120a9"
+      ],
+      "matchedDigestFrames": 1857,
+      "quiet": [
+        {
+          "devices": 1,
+          "buffers": 68,
+          "plays": 225,
+          "failures": 0,
+          "privateDesktop": false,
+          "windows": "hidden-noactivate",
+          "mute": "per-buffer DSBVOLUME_MIN before Play",
+          "nativePlaybackClocks": true,
+          "createdWindows": 1,
+          "blockedDialogs": 0,
+          "graphicsDevices": 1,
+          "visibleOwnedWindows": 0,
+          "ownsForeground": false
+        },
+        {
+          "devices": 1,
+          "buffers": 68,
+          "plays": 225,
+          "failures": 0,
+          "privateDesktop": false,
+          "windows": "hidden-noactivate",
+          "mute": "per-buffer DSBVOLUME_MIN before Play",
+          "nativePlaybackClocks": true,
+          "createdWindows": 1,
+          "blockedDialogs": 0,
+          "graphicsDevices": 1,
+          "visibleOwnedWindows": 0,
+          "ownsForeground": false
+        }
+      ],
+      "ownedHandlesClosed": true,
+      "differentLocalSettings": false,
+      "independentNativeOptions": true,
+      "bothActorsShot": true,
+      "bothBombsCompleted": true,
+      "lifecycle": {
+        "retryTimerReset": {
+          "before": 680,
+          "after": 1
+        },
+        "retryBombsReset": true,
+        "p2BombActiveBeforeTitle": true,
+        "titleReleasedActors": true,
+        "titleReleasedAnm26": true,
+        "reentryPreservedEquipment": true,
+        "shootingAfterRetryAndReentry": true
+      },
+      "scope": "Initial movement, focus, shooting, both initiating bombs; not a full clear or visual inspection"
+    },
+    {
+      "test": "characters-b-steam/practice-1-4-1.json",
+      "passed": true,
+      "rulesVersion": 5,
+      "p1": 4,
+      "p2": 1,
+      "mode": "practice",
+      "stage": 1,
+      "nativeSha256": "95394dd5d354880ae635d570c51f6c7240863481dbd5d469ef2fd669462dc731",
+      "guardSha256": "136a38d319cf6a03e196b621a357dfb6f442a8f8ffd8bd542bd90843f2b9229a",
+      "injectorSha256": "ff7bfd2ed14e4efd0ec1513569b393db4dcd3fdb9b56131350179051e8ed48a4",
+      "exeSha256": [
+        "d8d644d2e64957a3031b1a1399d0502e1ddaa5252d2c4e492770ad6717827628",
+        "eb275a8c285fd8450fa5ac79fa730a759aeca8b2904aeb16d30e65859372a459"
+      ],
+      "matchedDigestFrames": 1108,
+      "quiet": [
+        {
+          "devices": 1,
+          "buffers": 65,
+          "plays": 78,
+          "failures": 0,
+          "privateDesktop": false,
+          "windows": "hidden-noactivate",
+          "mute": "per-buffer DSBVOLUME_MIN before Play",
+          "nativePlaybackClocks": true,
+          "createdWindows": 1,
+          "blockedDialogs": 0,
+          "graphicsDevices": 1,
+          "visibleOwnedWindows": 0,
+          "ownsForeground": false
+        },
+        {
+          "devices": 1,
+          "buffers": 65,
+          "plays": 78,
+          "failures": 0,
+          "privateDesktop": false,
+          "windows": "hidden-noactivate",
+          "mute": "per-buffer DSBVOLUME_MIN before Play",
+          "nativePlaybackClocks": true,
+          "createdWindows": 1,
+          "blockedDialogs": 0,
+          "graphicsDevices": 1,
+          "visibleOwnedWindows": 0,
+          "ownsForeground": false
+        }
+      ],
+      "ownedHandlesClosed": true,
+      "differentLocalSettings": true,
+      "independentNativeOptions": true,
+      "bothActorsShot": true,
+      "bothBombsCompleted": true,
+      "scope": "Initial movement, focus, shooting, both initiating bombs; not a full clear or visual inspection"
+    },
+    {
+      "test": "offline.json",
+      "passed": true,
+      "players": [
+        4,
+        1
+      ],
+      "nativeSha256": "95394dd5d354880ae635d570c51f6c7240863481dbd5d469ef2fd669462dc731",
+      "exeSha256": "e2939ba3f92e427216a619191a682a8197cc59a64eab99302a7b98811d6120a9",
+      "quiet": {
+        "devices": 1,
+        "buffers": 65,
+        "plays": 825,
+        "failures": 0,
+        "privateDesktop": false,
+        "windows": "hidden-noactivate",
+        "mute": "per-buffer DSBVOLUME_MIN before Play",
+        "nativePlaybackClocks": true,
+        "createdWindows": 1,
+        "blockedDialogs": 0,
+        "graphicsDevices": 1,
+        "visibleOwnedWindows": 0,
+        "ownsForeground": false
+      },
+      "ownedHandlesClosed": true,
+      "networkBridge": false,
+      "diagnosticWrites": false,
+      "damageFrames": 1501,
+      "hitFrames": 177,
+      "reducedFrames": 153,
+      "incapacitatedFrames": 294,
+      "selected": [
+        4,
+        1
+      ]
+    },
+    {
+      "test": "demo-b-steam.json",
+      "passed": true,
+      "nativeSha256": "95394dd5d354880ae635d570c51f6c7240863481dbd5d469ef2fd669462dc731",
+      "exeSha256": [
+        "d8d644d2e64957a3031b1a1399d0502e1ddaa5252d2c4e492770ad6717827628",
+        "eb275a8c285fd8450fa5ac79fa730a759aeca8b2904aeb16d30e65859372a459"
+      ],
+      "matchedDigestFrames": 2227,
+      "quiet": [
+        {
+          "devices": 1,
+          "buffers": 64,
+          "plays": 83,
+          "failures": 0,
+          "privateDesktop": false,
+          "windows": "hidden-noactivate",
+          "mute": "per-buffer DSBVOLUME_MIN before Play",
+          "nativePlaybackClocks": true,
+          "createdWindows": 1,
+          "blockedDialogs": 0,
+          "graphicsDevices": 1,
+          "visibleOwnedWindows": 0,
+          "ownsForeground": false
+        },
+        {
+          "devices": 1,
+          "buffers": 64,
+          "plays": 83,
+          "failures": 0,
+          "privateDesktop": false,
+          "windows": "hidden-noactivate",
+          "mute": "per-buffer DSBVOLUME_MIN before Play",
+          "nativePlaybackClocks": true,
+          "createdWindows": 1,
+          "blockedDialogs": 0,
+          "graphicsDevices": 1,
+          "visibleOwnedWindows": 0,
+          "ownsForeground": false
+        }
+      ],
+      "ownedHandlesClosed": true,
+      "singleNativePlayer": true,
+      "nativeReplayShooting": true,
+      "cooperativeDamageBypassed": true,
+      "scope": "Built-in native demo/replay; no custom replay file or original solo clear"
+    }
+  ],
+  "tlsLoopback": {
+    "passed": true,
+    "seconds": 60,
+    "elapsedMilliseconds": 61114,
+    "protocol": 4,
+    "rules": 5,
+    "nativeMenu": true,
+    "startupPlayerOne": null,
+    "startupPlayerTwo": null,
+    "quiet": [
+      {
+        "Devices": 1,
+        "Buffers": 66,
+        "Plays": 684,
+        "Failures": 0,
+        "CreatedWindows": 1,
+        "BlockedDialogs": 0,
+        "GraphicsDevices": 1,
+        "VisibleOwnedWindows": 0,
+        "OwnsForeground": false
+      },
+      {
+        "Devices": 1,
+        "Buffers": 66,
+        "Plays": 684,
+        "Failures": 0,
+        "CreatedWindows": 1,
+        "BlockedDialogs": 0,
+        "GraphicsDevices": 1,
+        "VisibleOwnedWindows": 0,
+        "OwnsForeground": false
+      }
+    ],
+    "ownedProcessesExited": true,
+    "hostGame": {
+      "build": "retail-1.00a",
+      "exeHash": "e2939ba3f92e427216a619191a682a8197cc59a64eab99302a7b98811d6120a9"
+    },
+    "guestGame": {
+      "build": "retail-1.00a",
+      "exeHash": "e2939ba3f92e427216a619191a682a8197cc59a64eab99302a7b98811d6120a9"
+    },
+    "scope": "Two actual TH12 processes, separate game state and working directories, pinned TLS 1.3 input lockstep over loopback. No video/audio stream. Not a second physical PC or WAN test.",
+    "host": {
+      "CommittedFrame": 3428,
+      "ConfirmedFrame": 3426,
+      "StageObserved": true,
+      "MaximumP1Shots": 26,
+      "MaximumP2Shots": 26,
+      "minP2X": -184,
+      "maxP2X": 184
+    },
+    "guest": {
+      "CommittedFrame": 3427,
+      "ConfirmedFrame": 3426,
+      "StageObserved": true,
+      "MaximumP1Shots": 26,
+      "MaximumP2Shots": 26,
+      "minP2X": -184,
+      "maxP2X": 184
+    }
+  }
+}

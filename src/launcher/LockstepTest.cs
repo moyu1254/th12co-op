@@ -8,7 +8,7 @@ namespace TH12Coop;
 internal static partial class SelfTests
 {
     public static async Task<int> Lockstep(string gameDirectory, string? nativePath, int seconds, bool disconnectTest = false, string? guestGameDirectory = null,
-        int playerOne = 0, int playerTwo = 5)
+        int playerOne = 0, int playerTwo = 5, bool nativeMenu = false)
     {
         using var lifetime = new CancellationTokenSource();
         using var identity = RoomIdentity.Create();
@@ -32,12 +32,12 @@ internal static partial class SelfTests
         uint Input(bool host, uint frame)
         {
             var peer = host ? hostPeer : guestPeer;
-            if (peer?.StageObserved != true) return host && frame % 90 is >= 10 and < 15 ? 1u : 0u;
+            if (peer?.StageObserved != true) return (host || nativeMenu) && frame % 90 is >= 10 and < 15 ? 1u : 0u;
             var direction = ((frame / 120 & 1) == 0) == host ? 0x40u : 0x80u;
             return 1 | direction;
         }
         var host = OnlineSession.Host(gameDirectory, port, identity, 3, text => Status("Host: ", text), lifetime.Token,
-            nativePath, true, frame => Input(true, frame), peer => hostPeer = peer, playerOne);
+            nativePath, true, frame => Input(true, frame), peer => hostPeer = peer, nativeMenu ? null : playerOne);
         Task? guest = null;
         try
         {
@@ -45,7 +45,7 @@ internal static partial class SelfTests
             if (await Task.WhenAny(wait, host) == host) await host;
             await wait;
             guest = OnlineSession.Join(guestGameDirectory, "127.0.0.1", port, identity.Invite, text => Status("Guest: ", text), guestLifetime.Token,
-                nativePath, true, frame => Input(false, frame), peer => guestPeer = peer, playerTwo);
+                nativePath, true, frame => Input(false, frame), peer => guestPeer = peer, nativeMenu ? null : playerTwo);
             var duration = Task.Delay(TimeSpan.FromSeconds(seconds), lifetime.Token);
             var finished = await Task.WhenAny(host, guest, duration);
             if (finished != duration) { await finished; failure = "A peer ended before the requested duration."; }
@@ -99,7 +99,8 @@ internal static partial class SelfTests
         var passed = failure == null && quiet.Count == 2 && quiet.All(evidence => evidence.Passed) && Sufficient(hostPeer) && Sufficient(guestPeer) && ownedProcessesExited &&
             (!disconnectTest || disconnectRequested && disconnectMilliseconds < 10000);
         var result = new { passed, failure, peerErrors, seconds, elapsedMilliseconds = durationClock.ElapsedMilliseconds,
-            protocol = SecureChannel.ProtocolVersion, playerOne, playerTwo, quiet,
+            protocol = SecureChannel.ProtocolVersion, rules = NetBridge.RulesVersion, nativeMenu,
+            startupPlayerOne = nativeMenu ? (int?)null : playerOne, startupPlayerTwo = nativeMenu ? (int?)null : playerTwo, quiet,
             hostGame = new { build = hostBuild.Id, exeHash = hostBuild.ExeHash },
             guestGame = new { build = guestBuild.Id, exeHash = guestBuild.ExeHash },
             disconnectTest, disconnectRequested, disconnectMilliseconds, ownedProcessesExited, host = Summary(hostPeer), guest = Summary(guestPeer), notes,

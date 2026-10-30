@@ -2,11 +2,11 @@
 
 非公開の招待で接続した2人が、それぞれのWindows 11 PCで正規のTH12を実行して操作入力を同期する。描画と音声は各PCで処理する。対応する本体は、検証済みの通常版1.00a・通常版1.00b・Steam版1.00bの3種類に限る。
 
-通信Protocol 4・協力Rules 4の実装を説明する。脅威と残るリスクは [脅威モデル](TH12CO-OP-threat-model.md)、実測した試験範囲は [検証結果](../verification/RESULTS.md) を参照。
+通信Protocol 4・協力Rules 5の実装を説明する。公開済みv0.2.0はRules 4。脅威と残るリスクは [脅威モデル](TH12CO-OP-threat-model.md)、実測した試験範囲は [検証結果](../verification/RESULTS.md) を参照。
 
 ## 通信と認証
 
-Protocol.csは.NETのSslStreamを使い、TLS 1.3を必須にする。通信バージョン4、協力ルール4、ローカルIPCの構造体バージョン1をそれぞれ検証する。
+Protocol.csは.NETのSslStreamを使い、TLS 1.3を必須にする。通信バージョン4、協力ルール5、ローカルIPCの構造体バージョン1をそれぞれ検証する。
 
 ホストはECDSA P-256の一時証明書と256-bitのランダムな参加鍵を作成する。T12L4招待には証明書全体のSHA-256と参加鍵を格納し、接続先のIP・ポートは別に指定する。ゲストは証明書のハッシュを固定時間で照合し、ホストはTLS内で参加鍵を固定時間で検証する。
 
@@ -36,7 +36,7 @@ TCPの分割・結合を前提にReadExactlyAsyncで読む。不明種別、過�
 
 ## 開始合意とローカル実行
 
-OnlineProfile.ReadはローカルEXE・DAT・BGM・MOD DLL・共通オンライン設定をSHA-256で識別し、既知EXEと対応するDAT/BGMの組合せを検証する。既知本体は通常版1.00a・通常版1.00b・Steam版1.00bの3つに限定する。認証後にゲストが自分の機体IDを送り、ホストは双方の機体、プロトコル版、ルール版、入力遅延、乱数seed、セッションID、既知build ID、資産と依存DLLの識別値をmanifestへ含める。ゲストは自分の機体が保持されていることを確認し、manifest全体のハッシュへ応答する。OnlineProfile.ValidateRulesはルール版4以外をセッション準備前に拒否する。NetBridgeはIPC offset76へ4を書き、native lockstep.Initializeも4以外をフック設置前に拒否する。難易度・開始面は同期したゲームメニューで選択する。
+OnlineProfile.ReadはローカルEXE・DAT・BGM・MOD DLL・共通オンライン設定をSHA-256で識別し、既知EXEと対応するDAT/BGMの組合せを検証する。既知本体は通常版1.00a・通常版1.00b・Steam版1.00bの3つに限定する。通常起動では認証後の選択メッセージを255（ゲーム内選択）とし、manifestのPlayersはnullにする。固定機体を渡す既存の診断呼出元との混在は拒否する。ホストはプロトコル版、ルール版、入力遅延、乱数seed、セッションID、既知build ID、資産と依存DLLの識別値をmanifestへ含め、ゲストはmanifest全体のハッシュへ応答する。OnlineProfile.ValidateRulesはルール版5以外をセッション準備前に拒否する。NetBridgeはIPC offset76へ5を書き、native lockstep.Initializeも5以外をフック設置前に拒否する。機体・装備、難易度・開始面は同期したゲームメニューで選択する。
 
 通常版1.00bとSteam版1.00bは、正常起動後のゲームコードとデータが一致するため混在を許可する。比較前に双方のbuild IDとEXE hashを既知プロファイルへ照合し、そのうえで同じエンジン版・DAT・BGM・MOD DLL・設定・依存関係の識別値を要求する。build IDを名乗るだけで任意のEXEを許可する処理ではない。1.00aと1.00bの混在は拒否する。根拠は[本体比較](version-layout-audit.md)に記録する。
 

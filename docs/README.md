@@ -6,6 +6,7 @@
 |---|---|
 | [起動とオンライン接続](../README.md) | 対応環境、導入、操作、接続 |
 | [協力ルール](cooperative-rules.md) | 共有資源、被弾、復帰、標的、回収 |
+| [協力ショット補正](cooperative-damage.md) | 目標倍率、同一フレーム集計、ボムの分離 |
 | [入力設定](local-input.md) | キーボード、XInput、Windows joystick |
 | [PC別設定](local-configuration.md) | 画面・音量と共通進行設定の分離 |
 | [検証結果](../verification/RESULTS.md) | バージョン別の実測結果と未検証範囲 |
@@ -27,7 +28,7 @@
 
 ## リリースノート
 
-[v0.2.0](releases/v0.2.0.md) · [v0.1.1](releases/v0.1.1.md) · [v0.1.0](releases/v0.1.0.md)
+[v0.3.0](releases/v0.3.0.md) · [v0.2.0](releases/v0.2.0.md) · [v0.1.1](releases/v0.1.1.md) · [v0.1.0](releases/v0.1.0.md)
 
 ## 過去の監査記録
 

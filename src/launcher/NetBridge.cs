@@ -6,7 +6,7 @@ internal readonly record struct GameDigest(uint Frame, uint Low, uint High, uint
 
 internal sealed class NetBridge : IDisposable
 {
-    internal const uint Magic = 0x4e323154, Version = 1, Size = 12544, Capacity = 256, RulesVersion = 4;
+    internal const uint Magic = 0x4e323154, Version = 1, Size = 12544, Capacity = 256, RulesVersion = 5;
     private readonly MemoryMappedFile mapping;
     private readonly MemoryMappedViewAccessor memory;
     private readonly System.Threading.Timer heartbeat;

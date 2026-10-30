@@ -19,6 +19,7 @@ internal static partial class SelfTests
         try
         {
             RunInputTests(passed);
+            await GameSettingsTests(passed, token);
             await LocalConfigurationTests(passed, token);
             using var identity = RoomIdentity.Create();
             var parsed = RoomIdentity.Parse(identity.Invite);

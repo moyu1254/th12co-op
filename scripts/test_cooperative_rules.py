@@ -21,7 +21,7 @@ def run(folder, output, family, case, shot):
               'guard_sha256': hashlib.sha256((ROOT/'dist/th12coop-quiet-test.dll').read_bytes()).hexdigest(),
               'fixture_mutates_gameplay': True, 'passed': False}
     try:
-        game = Game(folder)
+        game = Game(folder, players=(shot, shot))
         report['pid'] = game.proc.pid
         game.confirm_until(5)
         game.confirm_until(6)

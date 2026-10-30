@@ -211,7 +211,7 @@ def run(args):
             'nativeSha256':hashlib.sha256((ROOT/'dist/th12coop-smoke.dll').read_bytes()).hexdigest()}
     game=None
     try:
-        game=Game(folder);report['pid']=game.proc.pid
+        game=Game(folder,players=(args.shot,args.shot));report['pid']=game.proc.pid
         # Native MainMenu states: 1 title, 5 rank, 6 character, 7 shot, 8 stage.
         # The title action table at 1.00b 4411A4 maps 1 Extra / 2 Practice.
         select(game,1,1 if args.mode=='extra' else 2);game.pulse(1,.8)

@@ -141,7 +141,7 @@ def run(args):
             'events':[],'stagesObserved':[],'stagesWithTwoPlayers':[],'maxPlayerShots':[0,0]}
     game=audit=None;started=time.monotonic()
     try:
-        game=Game(folder);report['pid']=game.proc.pid;reader=Reader(game)
+        game=Game(folder,players=(args.shot,args.shot));report['pid']=game.proc.pid;reader=Reader(game)
         select(game,1,0 if args.mode=='story' else 1);game.pulse(1,.8)
         if args.mode=='story':select(game,5,args.rank)
         else:wait_menu(game,5)

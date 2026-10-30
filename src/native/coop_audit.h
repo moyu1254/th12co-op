@@ -36,7 +36,7 @@ static bool Poll(){
  if(!state||!first||!second)return false;
  const LONG sequence=InterlockedCompareExchange(&state->sequence,0,0);
  if(!sequence)return false;
- if(state->completed==sequence)return state->family!=4||!coop_campaign::Active();
+ if(state->completed==sequence)return state->family==6?state->result!=0:state->family!=4||!coop_campaign::Active();
  const uint32_t family=state->family,caseId=state->caseId;
  uint32_t result=0x20000000u;
  if(family==1)result=RunResourceAudit(caseId,state->details);
@@ -47,9 +47,26 @@ static bool Poll(){
 #endif
 #ifdef COOP_AUDIT_ITEMS
  if(family==3)result=RunItemAudit(caseId,state->details);
+ if(family==6&&caseId==1){
+  // A real native UFO with its original HP, geometry, motion, damage
+  // callback and death effects. Only the spawn and test actors are prepared.
+  result=coop_item_audit::SpawnUfo(1)?0u:0x80000001u;
+  if(!result){
+   mem<int>(0x4b0c48)=400;auto saved=singleton();
+   for(auto actor:{first,second}){
+    singleton()=actor;coop_characters::Scope scope(actor);
+    ((void(__stdcall*)(void*))optionsOrig)(actor);
+   }
+   singleton()=saved;
+   for(auto actor:{first,second})coop_resources::Invulnerable(actor,600);
+   auto ufo=mem<uintptr_t>(0x4b4534),full=mem<uintptr_t>(ufo+0x34);
+   state->details[0]=caseId;state->details[1]=mem<uint32_t>(full+0x2648);
+   state->details[2]=full==mem<uintptr_t>(ufo+0x34);
+  }
+ }
 #endif
  state->result=result;MemoryBarrier();InterlockedExchange(&state->completed,sequence);
- return family!=4||result!=0;
+ return (family!=4&&family!=6)||result!=0;
 }
 #else
 static void Initialize(){}

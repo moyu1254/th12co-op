@@ -2,26 +2,34 @@ namespace TH12Coop;
 
 internal sealed class GameSettingsForm : Form
 {
-    internal GameSettingsForm(string gameDirectory)
+    private readonly string gameDirectory;
+    private readonly int initialBgm, initialSound;
+    internal ComboBox Display { get; } = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
+    internal CheckBox Prompt { get; } = new() { Text = "起動時に表示方法を選ぶ", AutoSize = true };
+    internal NumericUpDown Bgm { get; } = new() { Minimum = 0, Maximum = 100, Increment = 5, Dock = DockStyle.Fill };
+    internal NumericUpDown Sound { get; } = new() { Minimum = 0, Maximum = 100, Increment = 5, Dock = DockStyle.Fill };
+
+    internal GameSettingsForm(string gameDirectory, byte[] configuration)
     {
+        this.gameDirectory = gameDirectory;
         Text = "ゲーム設定 · このPC";
         StartPosition = FormStartPosition.CenterParent;
         AutoScaleMode = AutoScaleMode.Dpi;
         ClientSize = new Size(420, 250);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = MinimizeBox = false;
-        var configuration = GameConfiguration.ReadLocal(gameDirectory, CancellationToken.None).GetAwaiter().GetResult();
+        if (!GameConfiguration.Valid(configuration)) throw new IOException("TH12の設定ファイルが正しくありません。");
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(20), ColumnCount = 2, RowCount = 5 };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        var display = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
+        var display = Display;
         display.Items.AddRange(["フルスクリーン", "ウィンドウ · 640 × 480", "ウィンドウ · 960 × 720", "ウィンドウ · 1280 × 960"]);
         display.SelectedIndex = Math.Clamp((int)configuration[0x1d], 0, 3);
-        var prompt = new CheckBox { Text = "起動時に表示方法を選ぶ", AutoSize = true, Checked = (configuration[0x39] & 1) != 0 };
-        var initialBgm = GameConfiguration.EffectiveVolume(configuration, true);
-        var initialSound = GameConfiguration.EffectiveVolume(configuration, false);
-        var bgm = new NumericUpDown { Minimum = 0, Maximum = 100, Increment = 5, Value = initialBgm, Dock = DockStyle.Fill };
-        var sound = new NumericUpDown { Minimum = 0, Maximum = 100, Increment = 5, Value = initialSound, Dock = DockStyle.Fill };
+        var prompt = Prompt; prompt.Checked = (configuration[0x39] & 1) != 0;
+        initialBgm = GameConfiguration.EffectiveVolume(configuration, true);
+        initialSound = GameConfiguration.EffectiveVolume(configuration, false);
+        var bgm = Bgm; bgm.Value = initialBgm;
+        var sound = Sound; sound.Value = initialSound;
         void Row(int index, string label, Control control)
         {
             layout.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left }, 0, index);
@@ -35,13 +43,7 @@ internal sealed class GameSettingsForm : Form
             save.Enabled = false;
             try
             {
-                // Reload before merging so unrelated offline settings survive.
-                var current = await GameConfiguration.ReadLocal(gameDirectory, CancellationToken.None);
-                current[0x1d] = (byte)display.SelectedIndex;
-                current[0x39] = (byte)((current[0x39] & ~1) | (prompt.Checked ? 1 : 0));
-                if ((int)bgm.Value != initialBgm) GameConfiguration.ChangeVolume(current, true, (int)bgm.Value);
-                if ((int)sound.Value != initialSound) GameConfiguration.ChangeVolume(current, false, (int)sound.Value);
-                await GameConfiguration.Save(Path.Combine(gameDirectory, "th12.cfg"), current, CancellationToken.None);
+                await SaveConfiguration(CancellationToken.None);
                 DialogResult = DialogResult.OK;
                 Close();
             }
@@ -51,5 +53,16 @@ internal sealed class GameSettingsForm : Form
         };
         AcceptButton = save;
         Controls.Add(layout);
+    }
+
+    internal async Task SaveConfiguration(CancellationToken token)
+    {
+        // Reload before merging so unrelated offline settings survive.
+        var current = await GameConfiguration.ReadLocal(gameDirectory, token);
+        current[0x1d] = (byte)Display.SelectedIndex;
+        current[0x39] = (byte)((current[0x39] & ~1) | (Prompt.Checked ? 1 : 0));
+        if ((int)Bgm.Value != initialBgm) GameConfiguration.ChangeVolume(current, true, (int)Bgm.Value);
+        if ((int)Sound.Value != initialSound) GameConfiguration.ChangeVolume(current, false, (int)Sound.Value);
+        await GameConfiguration.Save(Path.Combine(gameDirectory, "th12.cfg"), current, token);
     }
 }

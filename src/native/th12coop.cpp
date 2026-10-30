@@ -13,6 +13,7 @@
 #include "patch.h"
 #include "coop_scorecompat.h"
 #include "coop_characters.h"
+#include "coop_damage_sources.h"
 
 struct Shared {
     uint32_t magic, version;
@@ -63,9 +64,11 @@ static bool actorEligible(unsigned char* p){return coop_resources::Eligible(p);}
 #include "coop_effects.h"
 #include "coop_audit_campaign.h"
 #include "coop_audit.h"
+#include "coop_damage.h"
 static uint64_t cooperativeStateHash(){
  coop_lockstep::Hash h;
  coop_characters::Append(h);
+ coop_damage::Append(h);
  const uint64_t resources=coop_resources::OwnStateHash(),items=coop_items::DeterministicStateHash();
  h.word((uint32_t)resources);h.word((uint32_t)(resources>>32));
  h.word((uint32_t)items);h.word((uint32_t)(items>>32));
@@ -87,6 +90,7 @@ static uint64_t cooperativeStateHash(){
 static void resetCooperativeState(){
  coop_resources::Reset(first,second);coop_targeting::Reset();coop_collision::Reset();coop_items::Reset();coop_homing::Reset();coop_force::Reset();
  coop_effects::Reset();
+ coop_damage::Reset();coop_damage_sources::Reset();
 }
 static void publish(){
  coop_characters::Publish();
@@ -198,6 +202,9 @@ static void __cdecl activateHook(){
   log("Both Player objects activated through native reset");
   coop_resources::OnActivate();coop_targeting::Reset();coop_collision::Reset();coop_items::Reset();
   coop_effects::Reset(true);
+  // Native activation may already have allocated a new non-shot source.
+  // Its allocation hook owns provenance; do not erase it after activation.
+  coop_damage::Reset();
  }
  publish();
 }
@@ -257,7 +264,13 @@ static void __stdcall optionsHook(unsigned char* p){
  singleton()=old;
 }
 static int __stdcall damageHook(void* position,void* boxSize){
- return coop_campaign::ScaleDamage(coop_resources::Damage(position,boxSize,damageOrig));
+ bool suppressed=coop_damage_sources::suppressShots;
+ coop_damage_sources::suppressShots=second&&!coop_damage::AcceptShots();
+ int amount=coop_resources::Damage(position,boxSize,damageOrig);
+ coop_damage_sources::suppressShots=suppressed;
+ if(second&&coop_damage::Tracing())amount=(int)coop_damage::RawAmount();
+ coop_damage::Record();
+ return coop_campaign::ScaleDamage(amount);
 }
 static void __cdecl chooseItemPlayer(unsigned char* item){coop_items::SelectForMotion(item);}
 static uintptr_t itemContinue=0x425c2d;
@@ -294,12 +307,15 @@ __declspec(naked) static void seedHook(){
  }
 }
 static uint32_t __cdecl smokeInput(uint32_t physical){
- if(coop_lockstep::Active())return coop_lockstep::Poll(physical,first,second);
+ if(coop_lockstep::Active()){
+  auto primary=coop_lockstep::Poll(physical,first,second);
+  return coop_characters::MenuInput(primary,coop_lockstep::InputFor(1));
+ }
 #ifdef COOP_SMOKE_TEST
- if(ipc&&(ipc->flags&2)&&(uint32_t)(GetTickCount()-ipc->heartbeat)<=1000)return ipc->p1;
+ if(ipc&&(ipc->flags&2)&&(uint32_t)(GetTickCount()-ipc->heartbeat)<=1000)return coop_characters::MenuInput(ipc->p1,ipc->p2);
 #endif
- if(ipc&&(ipc->flags&1))return (uint32_t)(GetTickCount()-ipc->heartbeat)<=1000?(ipc->p1&0x1fb):0;
- return physical;
+ if(ipc&&(ipc->flags&1))return (uint32_t)(GetTickCount()-ipc->heartbeat)<=1000?coop_characters::MenuInput(ipc->p1&0x1fb,ipc->p2&0xfb):0;
+ return coop_characters::MenuInput(physical,keys2());
 }
 __declspec(naked) static void pollHook(){
  __asm {
@@ -320,6 +336,12 @@ static LONG CALLBACK crashTrace(EXCEPTION_POINTERS* e){
  if((e->ExceptionRecord->ExceptionCode & 0xffff0000u)!=0xc0000000u)return EXCEPTION_CONTINUE_SEARCH;
  if(logfile){
   CONTEXT* c=e->ContextRecord;
+  HMODULE module=nullptr;
+  if(GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,(const char*)e->ExceptionRecord->ExceptionAddress,&module)){
+   char path[MAX_PATH]={};GetModuleFileNameA(module,path,MAX_PATH);
+   auto name=strrchr(path,'\\');
+   fprintf(logfile,"Module %s +%08lx damageFrame=%u tasks=%u current=%p\n",name?name+1:path,(unsigned long)(c->Eip-(uintptr_t)module),coop_damage::frame,coop_damage::count,coop_damage::current);
+  }
   fprintf(logfile,"EXCEPTION %08lx at %p EIP=%08lx ESP=%08lx EBP=%08lx EAX=%08lx EBX=%08lx ECX=%08lx EDX=%08lx ESI=%08lx EDI=%08lx first=%p second=%p\n",e->ExceptionRecord->ExceptionCode,e->ExceptionRecord->ExceptionAddress,c->Eip,c->Esp,c->Ebp,c->Eax,c->Ebx,c->Ecx,c->Edx,c->Esi,c->Edi,first,second);
   __try{for(int i=0;i<24;i++)fprintf(logfile," %08lx",((DWORD*)c->Esp)[i]);fprintf(logfile,"\n");}__except(EXCEPTION_EXECUTE_HANDLER){}
   fflush(logfile);
@@ -380,6 +402,7 @@ static bool installHooks(){
  coop_effects::Register(registry);
  coop_scorecompat::Register(registry);
  coop_characters::Register(registry);
+ coop_damage_sources::Register(registry);coop_damage::Register(registry);
  if(!registry.Validate()){
   ipc->status=0x80000001;
   if(logfile)fprintf(logfile,"Unsupported signature at %08lx; no hooks applied\n",(unsigned long)registry.FailedAddress());

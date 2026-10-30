@@ -47,7 +47,7 @@ def enter():
     raise AssertionError('both actors did not enter stage')
 
 try:
-    for folder in (args.host_game,args.guest_game):games.append(NetGame(folder,0x9abc))
+    for folder in (args.host_game,args.guest_game):games.append(NetGame(folder,0x9abc,p1=0,p2=0))
     for game in games:k.ResumeThread(game.info.thread)
     enter();advance(120);checkpoint('initial')
     advance(3,0,2);advance(90);assert word(0x4b0ca0)==1

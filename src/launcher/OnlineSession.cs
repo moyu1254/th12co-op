@@ -50,7 +50,7 @@ internal static class OnlineSession
         if (delay is < 1 or > 12) throw new ArgumentOutOfRangeException(nameof(delay));
         ValidateCharacter(localCharacter);
         var guestCharacter = DecodeCharacter(await channel.Receive(token));
-        if (localCharacter.HasValue != guestCharacter.HasValue) throw new IOException("双方でランチャーから機体を選択してください。");
+        if (localCharacter.HasValue != guestCharacter.HasValue) throw new IOException("機体選択方式が一致しません。双方で同じランチャーから開始してください。");
         var players = localCharacter.HasValue ? new PlayerSelection(localCharacter.Value, guestCharacter!.Value) : null;
         var manifest = new SessionManifest(SecureChannel.ProtocolVersion, NetBridge.RulesVersion, delay,
             (uint)RandomNumberGenerator.GetInt32(1, 65536), Convert.ToHexString(channel.Session), assets, players);

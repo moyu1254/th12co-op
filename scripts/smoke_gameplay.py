@@ -72,8 +72,9 @@ class OwnedProcess:
         self.quiet.close()
 
 class Game:
-    def __init__(self,folder):
-        self.proc=None;self.map=None;self.boot=None;self.ready=False
+    def __init__(self,folder,players=None,production=False):
+        self.proc=None;self.map=None;self.boot=None;self.ready=False;self.player_mapping=None
+        self.players=players;self.production=production
         try:self._start(folder)
         except Exception:
             self.close();raise
@@ -93,7 +94,16 @@ class Game:
             self.boot=Mapping(boot_name,True)
         finally:k.CloseHandle(handle)
         for offset,value in [(0,0x42323154),(4,1),(8,self.proc.info.tid),(12,1)]:self.boot.write32(offset,value)
-        subprocess.run([str(ROOT/'dist/injector.exe'),'--early','--quiet-test',str(self.proc.pid),str(self.proc.info.tid),str(ROOT/'dist/th12coop-smoke.dll')],check=True,capture_output=True,text=True,timeout=40,creationflags=subprocess.CREATE_NO_WINDOW)
+        if self.players is not None:
+            if len(self.players)!=2 or any(p not in range(6) for p in self.players):raise ValueError('Both selections must be 0..5')
+            name=f'Local\\TH12CoopPlayers_{self.proc.pid}'
+            handle=k.CreateFileMappingW(wintypes.HANDLE(-1),None,4,0,16,name)
+            if not handle:raise ctypes.WinError(ctypes.get_last_error())
+            try:self.player_mapping=Mapping(name,True)
+            finally:k.CloseHandle(handle)
+            for offset,value in [(0,0x43323154),(4,1),(8,self.players[0]),(12,self.players[1])]:self.player_mapping.write32(offset,value)
+        native='th12coop-native.dll' if self.production else 'th12coop-smoke.dll'
+        subprocess.run([str(ROOT/'dist/injector.exe'),'--early','--quiet-test',str(self.proc.pid),str(self.proc.info.tid),str(ROOT/'dist'/native)],check=True,capture_output=True,text=True,timeout=40,creationflags=subprocess.CREATE_NO_WINDOW)
         self.quiet_evidence=quiet_evidence(self.proc.pid)
         for _ in range(100):
             try:self.map=Mapping(f'Local\\TH12Coop_{self.proc.pid}',True);break
@@ -136,7 +146,7 @@ class Game:
                         self.quiet_evidence=quiet_evidence(self.proc.pid)
                         if self.quiet_evidence['failures']:raise RuntimeError(f'Audio guard failure: {self.quiet_evidence}')
                         self.ready=True;return
-                self.map.write32(44,k.GetTickCount());self.map.write32(8,0);self.map.write32(12,0);self.map.write32(16,3)
+                self.map.write32(44,k.GetTickCount());self.map.write32(8,0);self.map.write32(12,0);self.map.write32(16,1 if self.production else 3)
                 time.sleep(.05)
             raise RuntimeError(f'Game device readiness timeout {self.state()}')
         finally:
@@ -147,7 +157,7 @@ class Game:
         end=time.monotonic()+seconds
         while time.monotonic()<end:
             if self.proc.poll() is not None:raise RuntimeError(f'Game exited: {self.proc.returncode}')
-            self.map.write32(44,k.GetTickCount());self.map.write32(8,a);self.map.write32(12,b);self.map.write32(16,3)
+            self.map.write32(44,k.GetTickCount());self.map.write32(8,a);self.map.write32(12,b);self.map.write32(16,1 if self.production else 3)
             time.sleep(.008)
         return self.state()
     def pulse(self,key,release=.65):
@@ -159,6 +169,7 @@ class Game:
         finally:
             try:
                 if self.boot:self.boot.close();self.boot=None
+                if self.player_mapping:self.player_mapping.close();self.player_mapping=None
             finally:
                 if self.proc:
                     try:
@@ -168,7 +179,7 @@ class Game:
 def check(shot,folder,out,death=False):
     game=None;report={'shot':shot,'game':str(folder),'exe_sha256':hashlib.sha256((folder/'th12.exe').read_bytes()).hexdigest(),'checks':{}}
     try:
-        game=Game(folder);report['pid']=game.proc.pid
+        game=Game(folder,players=(shot,shot));report['pid']=game.proc.pid
         game.confirm_until(5) # rank (title intro can still be loading)
         game.confirm_until(6) # character
         for _ in range(shot//2):game.pulse(0x20,.25)

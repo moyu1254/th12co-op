@@ -193,16 +193,27 @@ static int Damage(void* position,void* boxSize,void* original){
  for(int n=0;n<2;n++){
   auto p=Actor(n);Player()=p;suppressBomb=n!=owner;
   coop_characters::Scope character(p);
+  coop_damage_sources::bombDamage=0;coop_damage_sources::capturing=true;
   int amount=fn(position,boxSize);
-  if(State(p)==0||State(p)==2)amount/=5;
-  auto spell=At<unsigned char*>(0x4b43cc);auto bomb=At<unsigned char*>(0x4b43c4);
-  // Native spell IDs 93..99 reduce an invulnerable actor's contribution.
-  // Apply the same condition per source, before combining the two actors.
-  if(spell&&(At<uint32_t>((uintptr_t)spell+0x7c)&1)){
-   int id=At<int>((uintptr_t)spell+0x78);uint32_t flags=At<uint32_t>((uintptr_t)p+0xc414);
-   bool protectedActor=At<int>((uintptr_t)p+0xc404)!=0||(flags&2)!=0;
-   if(id>=93&&id<=99&&!(flags&4)&&((bomb&&At<int>((uintptr_t)bomb+0x3c)!=0)||protectedActor))amount/=5;
-  }
+  coop_damage_sources::capturing=false;
+  // Keep the native bomb-only baseline under the shared per-query cap.
+  int bombPart=(int)coop_damage_sources::bombDamage;
+  if(bombPart>amount)bombPart=amount;
+  coop_damage_sources::rawBomb[n]=(uint32_t)bombPart;
+  coop_damage_sources::rawShot[n]=(uint32_t)(amount-bombPart);
+  auto limit=[&](int value){
+   if(State(p)==0||State(p)==2)value/=5;
+   auto spell=At<uintptr_t>(0x4b43cc),nativeBomb=At<uintptr_t>(0x4b43c4);
+   if(spell&&(At<uint32_t>(spell+0x7c)&1)){
+    int id=At<int>(spell+0x78);uint32_t flags=At<uint32_t>((uintptr_t)p+0xc414);
+    bool protectedActor=At<int>((uintptr_t)p+0xc404)!=0||(flags&2)!=0;
+    if(id>=93&&id<=99&&!(flags&4)&&((nativeBomb&&At<int>(nativeBomb+0x3c)!=0)||protectedActor))value/=5;
+   }
+   return value;
+  };
+  amount=limit(amount);bombPart=limit(bombPart);
+  coop_damage_sources::nativeBomb[n]=(uint32_t)bombPart;
+  coop_damage_sources::shot[n]=(uint32_t)(amount-bombPart);
   total+=amount;
  }
  suppressBomb=oldSuppress;Player()=old;return total;

@@ -28,7 +28,9 @@ static void RefreshMenuAccess(){
 }
 static int __stdcall MenuTick(void* menu){
  RefreshMenuAccess();
- return ((int(__stdcall*)(void*))menuTickOriginal)(menu);
+ int result=((int(__stdcall*)(void*))menuTickOriginal)(menu);
+ coop_characters::MenuFinished((uintptr_t)menu);
+ return result;
 }
 static bool Live(unsigned char* p){
  if(!p)return false;

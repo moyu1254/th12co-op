@@ -7,7 +7,7 @@ parser=argparse.ArgumentParser();parser.add_argument('--game',type=Path,default=
 out=args.out;out.mkdir(parents=True,exist_ok=True)
 game=None;report={'game':str(args.game),'exe_sha256':hashlib.sha256((args.game/'th12.exe').read_bytes()).hexdigest(),'states':[]}
 try:
-    game=Game(args.game)
+    game=Game(args.game,players=(0,0))
     game.confirm_until(5);game.confirm_until(6);game.confirm_until(7);game.pulse(1,2)
     game.run(0,0,2)
     assert game.state()['status']==2

@@ -1,0 +1,288 @@
+{
+  "recordedUtc": "2026-10-30T07:09:20.367373+00:00",
+  "version": "0.3.0",
+  "prerelease": true,
+  "protocol": 4,
+  "rules": 5,
+  "ipc": 1,
+  "binaries": {
+    "TH12Coop.exe": "739d98731703bac2d859d23936d6ceab866ec78604be15e85c420ef90331728b",
+    "TH12Coop.dll": "ef11213bac2e5b3d93020682395789ad31191a8cb93a793719b37c78369c510b",
+    "th12coop-native.dll": "95394dd5d354880ae635d570c51f6c7240863481dbd5d469ef2fd669462dc731",
+    "injector.exe": "ff7bfd2ed14e4efd0ec1513569b393db4dcd3fdb9b56131350179051e8ed48a4",
+    "coreclr.dll": "1bc65b8d45474b19adf3ca85ce881087aff599ffc72b2c1a323e878227757b65",
+    "TH12Coop.runtimeconfig.json": "f93088763df733474d8df16646186166e13deab5d67f2be583356c75a31207c0",
+    "TH12Coop.deps.json": "1628f345cba835694acaee168044f7e9044a4c43f3d1cea8a949dab25abdc2e1"
+  },
+  "unchangedGameplayBinaries": [
+    "th12coop-native.dll",
+    "injector.exe"
+  ],
+  "launcherProjectSha256": "d24fced8e2c67c06cfad5e7ca5cd62d8d5277fdaef2079ac1936f946cfbd3c56",
+  "launcherSelfTests": {
+    "passed": true,
+    "groups": 19,
+    "checks": [
+      "PASS Local input: keyboard + gamepad merge, rebinding, 32 buttons, six axes/dead zones/inversion, eight POV directions, opposing directions and unfocused/disconnected behavior",
+      "PASS Local input settings: independent profiles and characters persist atomically; malformed settings rejected without overwriting",
+      "PASS Game settings on an STA UI message pump: asynchronous load, form construction, edits, save, reopen and concurrent-field merge without UI blocking",
+      "PASS Local display/audio/input separated from shared simulation settings; invalid settings rejected",
+      "PASS 36 independent player selections published; malformed selection packets rejected",
+      "PASS Local settings persist without importing scores or replacing offline simulation options; cancelled/corrupt writes preserve prior files and muted audio",
+      "PASS Actual TLS negotiation: all 36 player pairs, differing local settings and retail/Steam identities; substituted guest selection, mixed legacy mode and altered offer acknowledgement rejected",
+      "PASS Versioned pinned certificate invite + independent 256-bit guest capability",
+      "PASS Three known profiles accepted; verified retail/Steam 1.00b compatible; 1.00a/1.00b, forged identities and MOD/config/dependency mismatches rejected",
+      "PASS Cooperative rules version, seed, delay and session identity checked; old rules rejected",
+      "PASS Actual TLS 1.3 pinned connection, mutual role/capability binding, duplex records and 4096-byte bound",
+      "PASS Wrong role, wrong session, duplicate/skipped frame and unknown input bit rejected",
+      "PASS Native digest mismatch and authenticated peer heartbeat flood rejected",
+      "PASS Wrong TLS certificate pin and wrong guest capability fail closed",
+      "PASS Negative/zero/oversized record prefix rejected before payload read; protocol mismatch rejected",
+      "PASS Authenticated truncated body rejected and stalled body read cancelled at its deadline",
+      "PASS Actual room admission accepts invited guest while an unauthenticated TLS socket is idle",
+      "PASS Real mapped IPC rejects duplicate/ahead commits and signals native abort",
+      "PASS Managed preparation, asset drift, IPC and actual TLS deadline regression suite",
+      "PASS 19 test groups"
+    ]
+  },
+  "managedAudit": {
+    "passed": true,
+    "filter": null,
+    "groups": 18,
+    "failed": 0,
+    "results": [
+      {
+        "name": "Cancelled Steam identity creation leaves no final file and can retry",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "Cancelled online preparation leaves no final directory and can retry",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "Failed online asset preparation leaves no partially published directory",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "Online sessions exclude clear records and preserve the source save",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "Session settings persist only local fields and keep offline gameplay settings",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "Game assets changed after the manifest was read are rejected",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "Native DLL changed after the manifest was read is rejected",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "Failed startup restores the prior valid configuration exactly",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "Native local-input IPC rejects unsupported bits and unstable frame",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "Cleanup preserves the first native abort reason",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "Initial configuration writes are atomic and preserve existing files",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "A disconnected peer cancels preparation before publishing a session",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "TLS EOF is a transport failure and caller cancellation remains cancellation",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "TLS receive inactivity deadline is reported as timeout, not user cancellation",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "TLS connection and authentication deadlines are reported as timeouts",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "TLS backpressure reaches the production send deadline without an unbounded wait",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "Diagnostic write failure cannot replace a desync error or skip its abort",
+        "passed": true,
+        "error": null
+      },
+      {
+        "name": "Diagnostic tail write failure cannot replace requested cancellation",
+        "passed": true,
+        "error": null
+      }
+    ],
+    "scope": "Synthetic temporary files, real mapped IPC, and actual loopback TLS with production connect/authentication/send/receive deadlines; no original game assets, native DLL loading, or game processes."
+  },
+  "runtime": {
+    "tfm": "net10.0",
+    "includedFrameworks": [
+      {
+        "name": "Microsoft.NETCore.App",
+        "version": "10.0.14"
+      },
+      {
+        "name": "Microsoft.WindowsDesktop.App",
+        "version": "10.0.14"
+      }
+    ],
+    "configProperties": {
+      "System.Reflection.Metadata.MetadataUpdater.IsSupported": false,
+      "System.Runtime.Serialization.EnableUnsafeBinaryFormatterSerialization": false,
+      "CSWINRT_USE_WINDOWS_UI_XAML_PROJECTIONS": false
+    }
+  },
+  "scope": "Version-only managed rebuild; previous Rules 5 real-game results apply to byte-identical native/injector binaries. No WAN, second physical PC or original-difficulty balance comparison.",
+  "candidatePackage": {
+    "passed": true,
+    "fileCount": 724,
+    "zipCrcChecked": true,
+    "artifacts": {
+      "dist/TH12Coop.dll": {
+        "sha256": "ef11213bac2e5b3d93020682395789ad31191a8cb93a793719b37c78369c510b",
+        "bytes": 292864,
+        "machine": "0x8664",
+        "optional_header": "0x20b",
+        "dll": false,
+        "managed": true
+      },
+      "dist/TH12Coop.exe": {
+        "sha256": "739d98731703bac2d859d23936d6ceab866ec78604be15e85c420ef90331728b",
+        "bytes": 162304,
+        "machine": "0x8664",
+        "optional_header": "0x20b",
+        "dll": false,
+        "managed": false
+      },
+      "dist/coreclr.dll": {
+        "sha256": "1bc65b8d45474b19adf3ca85ce881087aff599ffc72b2c1a323e878227757b65",
+        "bytes": 4613456,
+        "machine": "0x8664",
+        "optional_header": "0x20b",
+        "dll": true,
+        "managed": false
+      },
+      "dist/injector.exe": {
+        "sha256": "ff7bfd2ed14e4efd0ec1513569b393db4dcd3fdb9b56131350179051e8ed48a4",
+        "bytes": 140800,
+        "machine": "0x014c",
+        "optional_header": "0x10b",
+        "dll": false,
+        "managed": false
+      },
+      "dist/th12coop-native.dll": {
+        "sha256": "95394dd5d354880ae635d570c51f6c7240863481dbd5d469ef2fd669462dc731",
+        "bytes": 192512,
+        "machine": "0x014c",
+        "optional_header": "0x10b",
+        "dll": true,
+        "managed": false
+      }
+    },
+    "runtime": {
+      "tfm": "net10.0",
+      "included_frameworks": {
+        "Microsoft.NETCore.App": "10.0.14",
+        "Microsoft.WindowsDesktop.App": "10.0.14"
+      }
+    },
+    "scope": "Candidate archive content and extracted binary validation before adding this final verification record; final archive is checked again against its complete tracked manifest."
+  },
+  "extractedCandidateSelfTests": {
+    "passed": true,
+    "groups": 19,
+    "managedGroups": 18
+  },
+  "releaseLauncherTlsLoopback": {
+    "passed": true,
+    "seconds": 60,
+    "elapsedMilliseconds": 60845,
+    "protocol": 4,
+    "rules": 5,
+    "nativeMenu": true,
+    "startupPlayerOne": null,
+    "startupPlayerTwo": null,
+    "quiet": [
+      {
+        "Devices": 1,
+        "Buffers": 66,
+        "Plays": 956,
+        "Failures": 0,
+        "CreatedWindows": 1,
+        "BlockedDialogs": 0,
+        "GraphicsDevices": 1,
+        "VisibleOwnedWindows": 0,
+        "OwnsForeground": false
+      },
+      {
+        "Devices": 1,
+        "Buffers": 66,
+        "Plays": 956,
+        "Failures": 0,
+        "CreatedWindows": 1,
+        "BlockedDialogs": 0,
+        "GraphicsDevices": 1,
+        "VisibleOwnedWindows": 0,
+        "OwnsForeground": false
+      }
+    ],
+    "ownedProcessesExited": true,
+    "hostGame": {
+      "build": "retail-1.00a",
+      "exeHash": "e2939ba3f92e427216a619191a682a8197cc59a64eab99302a7b98811d6120a9"
+    },
+    "guestGame": {
+      "build": "retail-1.00a",
+      "exeHash": "e2939ba3f92e427216a619191a682a8197cc59a64eab99302a7b98811d6120a9"
+    },
+    "scope": "Two actual TH12 processes, separate game state and working directories, pinned TLS 1.3 input lockstep over loopback. No video/audio stream. Not a second physical PC or WAN test.",
+    "host": {
+      "CommittedFrame": 3431,
+      "ConfirmedFrame": 3430,
+      "StageObserved": true,
+      "MaximumP1Shots": 26,
+      "MaximumP2Shots": 26,
+      "minP2X": -184,
+      "maxP2X": 184
+    },
+    "guest": {
+      "CommittedFrame": 3433,
+      "ConfirmedFrame": 3430,
+      "StageObserved": true,
+      "MaximumP1Shots": 26,
+      "MaximumP2Shots": 26,
+      "minP2X": -184,
+      "maxP2X": 184
+    }
+  }
+}

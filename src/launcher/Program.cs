@@ -21,7 +21,7 @@ internal static class Program
                 Option(args, "--native"), int.TryParse(Option(args, "--seconds"), out var seconds) ? Math.Clamp(seconds, 20, 300) : 60,
                 args.Contains("--disconnect-test"), Option(args, "--guest-game"),
                 int.TryParse(Option(args, "--p1"), out var p1) ? p1 : 0,
-                int.TryParse(Option(args, "--p2"), out var p2) ? p2 : 5).GetAwaiter().GetResult();
+                int.TryParse(Option(args, "--p2"), out var p2) ? p2 : 5, args.Contains("--menu-selection")).GetAwaiter().GetResult();
         if (args.Contains("--startup-guard-test"))
             return SelfTests.StartupGuard(Option(args, "--game") ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "game"))).GetAwaiter().GetResult();
         if (args.Contains("--offline-start-test"))

@@ -6,6 +6,9 @@
 // character/weapon dispatch globals need a scoped view of that actor.
 namespace coop_characters {
 static bool configured;
+static bool menuSelection=true;
+static uint32_t menuPlayer;
+static uintptr_t weaponContinue,practiceContinue,weaponBack;
 static uint32_t selected[2], active[2], bombShot=UINT32_MAX;
 static unsigned char* actors[2];
 static uint32_t constructionSlot=7;
@@ -36,12 +39,81 @@ static bool Initialize(){
  if(!mapping)return GetLastError()==ERROR_FILE_NOT_FOUND;
  auto header=(const uint32_t*)MapViewOfFile(mapping,FILE_MAP_READ,0,0,16);
  const bool valid=header&&header[0]==0x43323154&&header[1]==1&&header[2]<6&&header[3]<6;
- if(valid){selected[0]=header[2];selected[1]=header[3];configured=true;}
+ if(valid){selected[0]=header[2];selected[1]=header[3];configured=true;menuSelection=false;}
  if(header)UnmapViewOfFile(header);CloseHandle(mapping);return valid;
 }
 static bool SinglePlayer(){
  auto gm=At<uintptr_t>(0x4b44e8);
  return (At<uint32_t>(0x4b0ce0)&0x20)||(gm&&At<int>(gm+0x74));
+}
+static uint32_t MenuInput(uint32_t primary,uint32_t partner){
+ auto menu=At<uintptr_t>(0x4b4530);
+ return menuSelection&&menuPlayer==1&&menu&&(At<uint32_t>(menu+0x1c)==6||At<uint32_t>(menu+0x1c)==7)?partner:primary;
+}
+// Reuse the native character/equipment screens and their cancel animation.
+// The first confirmation returns to character selection for the partner;
+// only the second confirmation can start a stage (including Practice/Extra).
+static int __cdecl ConfirmWeapon(uintptr_t menu){
+ if(!menuSelection||SinglePlayer())return 0;
+ selected[menuPlayer]=At<uint32_t>(0x4b0c90)*2+At<uint32_t>(menu+0x28);
+ if(menuPlayer==0){menuPlayer=1;configured=false;return 1;}
+ configured=true;return 0;
+}
+__declspec(naked) static void WeaponConfirm(){__asm {
+ pushfd
+ pushad
+ push ebp
+ call ConfirmWeapon
+ add esp,4
+ test eax,eax
+ jnz partner
+ popad
+ popfd
+ mov ecx,dword ptr [ebp+28h]
+ lea eax,[ebp+28h]
+ jmp weaponContinue
+partner:
+ popad
+ popfd
+ jmp weaponBack
+}}
+__declspec(naked) static void PracticeConfirm(){__asm {
+ pushfd
+ pushad
+ push ebp
+ call ConfirmWeapon
+ add esp,4
+ test eax,eax
+ jnz partner
+ popad
+ popfd
+ mov ecx,dword ptr [ebp+28h]
+ lea eax,[ebp+28h]
+ jmp practiceContinue
+partner:
+ popad
+ popfd
+ jmp weaponBack
+}}
+__declspec(noinline) static void MenuFinished(uintptr_t menu){
+ if(!menuSelection)return;
+ auto state=At<uint32_t>(menu+0x1c);
+ if(state!=6&&state!=7){
+  if(configured)Select(selected[0]);
+  menuPlayer=0;
+ }
+ if(state!=6&&state!=7)return;
+ auto manager=At<uintptr_t>(0x4b43b8);if(!manager)return;
+ const char* label=menuPlayer?"2P":"1P";float position[3]={304.f,24.f,0.f};
+ // This function precedes the 1.00b insertion and has identical bytes/address.
+ const uintptr_t create=0x4014f0;
+ // AsciiManager::create_string (EAX text, EBX position, ECX manager).
+ __asm {push ebx
+ lea ebx,position
+ mov eax,label
+ mov ecx,manager
+ call create
+ pop ebx}
 }
 static void __cdecl BeginStage(){
  // Run before the stage worker chooses story, GUI, score category or SHT.
@@ -67,6 +139,7 @@ static void LatchBomb(unsigned char* actor){bombShot=Shot(actor);}
 static uint32_t BombShot(){return bombShot;}
 static void RestoreBomb(uint32_t shot){bombShot=shot;}
 static void Append(coop_lockstep::Hash& h){
+ h.word(menuSelection);h.word(menuPlayer);
  h.word(configured?1:0);h.word(configured?selected[0]:UINT32_MAX);h.word(configured?selected[1]:UINT32_MAX);
  h.word(actors[0]?active[0]:UINT32_MAX);h.word(actors[1]?active[1]:UINT32_MAX);h.word(bombShot);
 }
@@ -113,6 +186,11 @@ __declspec(naked) static void BombEnd(){__asm {
  ret
 }}
 static void Register(coop_patch::Registry& registry){
+ weaponContinue=coop_game::Code(0x445e81);weaponBack=coop_game::Code(0x445f31);
+ practiceContinue=coop_game::Code(0x445e47);
+ const unsigned char confirm[]={0x8b,0x4d,0x28,0x8d,0x45,0x28};
+ registry.Hook100a(0x445e7b,confirm,sizeof(confirm),(void*)WeaponConfirm);
+ registry.Hook100a(0x445e41,confirm,sizeof(confirm),(void*)PracticeConfirm);
  assetContinue=coop_game::Code(0x435ad7);
  bombEndDispatch=coop_game::Code(0x406e46);
  const unsigned char slot[]={0xb9,7,0,0,0};

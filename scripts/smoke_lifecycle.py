@@ -8,7 +8,7 @@ out=args.out;out.mkdir(parents=True,exist_ok=True)
 game=None
 report={'game':str(args.game),'exe_sha256':hashlib.sha256((args.game/'th12.exe').read_bytes()).hexdigest()}
 try:
-    game=Game(args.game)
+    game=Game(args.game,players=(0,0))
     def enter():
         game.confirm_until(5);game.confirm_until(6);game.confirm_until(7)
         game.pulse(1,2)

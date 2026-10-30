@@ -1,6 +1,6 @@
 # Native IPC version 1
 
-The local launcher/DLL ABI remains version **1**, cooperative rules are **4**, and network protocol is **4** (`T12L4` invitations). These version numbers have separate purposes. All three known executable profiles use this layout. The current behavior is defined by [the cooperative rules](cooperative-rules.md) and [engine integration](native-engine.md); executed tests belong in [verification/RESULTS.md](../verification/RESULTS.md).
+The local launcher/DLL ABI remains version **1**, cooperative rules are **5**, and network protocol is **4** (`T12L4` invitations). These version numbers have separate purposes. All three known executable profiles use this layout. The current behavior is defined by [the cooperative rules](cooperative-rules.md) and [engine integration](native-engine.md); executed tests belong in [verification/RESULTS.md](../verification/RESULTS.md).
 
 Both offline and online startup use a suspended process and early injection. IPC carries startup metadata, controls and state digests. There are no video/audio capture or transport mappings. Integers below are little-endian 32-bit values unless identified as floats.
 
@@ -41,7 +41,7 @@ Managed offline gameplay uses bit 0 and masks `0xfb`; managed P1 menu/pause poll
 
 ## Independent player selection
 
-Before injection the launcher optionally publishes a 16-byte `Local\TH12CoopPlayers_<pid>` mapping: magic `0x43323154`, version 1, P1 selection, P2 selection. Selection IDs 0–5 are Reimu A/B, Marisa A/B, Sanae A/B. The native DLL reads and validates it once. An absent mapping preserves the old in-game same-character selection for diagnostic callers; malformed mappings fail initialization. Protocol 4 first sends the guest selection as `[4, selection]` (`255` means the legacy menu path), then freezes both selections in the session manifest. The guest checks its own selection and acknowledges the complete manifest hash before either game starts. Selection and active bomb equipment are included in the native digest.
+Before injection the launcher optionally publishes a 16-byte `Local\TH12CoopPlayers_<pid>` mapping: magic `0x43323154`, version 1, P1 selection, P2 selection. Selection IDs 0–5 are Reimu A/B, Marisa A/B, Sanae A/B. The native DLL reads and validates it once. An absent mapping enables sequential native in-game P1/P2 selection; malformed mappings fail initialization. Protocol 4 first sends the guest selection as `[4, selection]` (`255` means the in-game selection path), then freezes explicit diagnostic selections in the session manifest. The normal launcher sends `255` on both peers; native menu choices travel through committed P1/P2 input under Rules 5. The guest checks its own selection and acknowledges the complete manifest hash before either game starts. Selection and active bomb equipment are included in the native digest.
 
 Online actor controls come exclusively from committed network input; the 64-byte mapping remains telemetry. Its status 2 means an actor pair exists, not that both actors are currently alive or movable.
 

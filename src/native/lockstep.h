@@ -261,8 +261,8 @@ static bool Initialize(void(*writeLog)(const char*)){
  state=(Shared*)MapViewOfFile(mapping,FILE_MAP_ALL_ACCESS,0,0,Bytes);
  if(!state)return false;
  auto& h=state->h;
- if(h.magic!=Magic||h.version!=Version||h.bytes!=Bytes||h.capacity!=Capacity||h.rulesVersion!=4||!(h.flags&1)||(h.flags&~3u)){Fail(6);return false;}
- h.rulesVersion=4;
+ if(h.magic!=Magic||h.version!=Version||h.bytes!=Bytes||h.capacity!=Capacity||h.rulesVersion!=5||!(h.flags&1)||(h.flags&~3u)){Fail(6);return false;}
+ h.rulesVersion=5;
  sprintf_s(name,"Local\\TH12CoopNetRequest_%lu",GetCurrentProcessId());requestEvent=OpenEventA(EVENT_MODIFY_STATE,FALSE,name);
  sprintf_s(name,"Local\\TH12CoopNetCommit_%lu",GetCurrentProcessId());commitEvent=OpenEventA(SYNCHRONIZE,FALSE,name);
  if(h.flags&2){

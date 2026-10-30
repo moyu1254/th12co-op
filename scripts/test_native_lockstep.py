@@ -20,8 +20,9 @@ k.TerminateProcess.argtypes=[W.HANDLE,W.UINT];k.TerminateProcess.restype=W.BOOL
 k.WaitForSingleObject.argtypes=[W.HANDLE,W.DWORD];k.WaitForSingleObject.restype=W.DWORD
 
 class NetGame:
-    def __init__(self,folder,seed,configuration=None,p1=255,p2=255):
+    def __init__(self,folder,seed,configuration=None,p1=255,p2=255,native='th12coop-native.dll'):
         self.map=None;self.players=None;self.quiet=None;self.info=ProcessInfo();self.folder=folder
+        self.native=native
         try:self._start(folder,seed,configuration,p1,p2)
         except Exception:
             self.close();raise
@@ -41,7 +42,7 @@ class NetGame:
         handle=k.CreateFileMappingW(W.HANDLE(-1),None,4,0,12544,f'Local\\TH12CoopNet_{self.info.pid}')
         if not handle:raise C.WinError(C.get_last_error())
         self.map=Mapping(f'Local\\TH12CoopNet_{self.info.pid}',True);k.CloseHandle(handle)
-        for offset,value in [(0,0x4e323154),(4,1),(8,12544),(12,256),(16,3),(20,seed),(24,k.GetTickCount()),(76,4),(92,self.info.tid)]:self.map.write32(offset,value)
+        for offset,value in [(0,0x4e323154),(4,1),(8,12544),(12,256),(16,3),(20,seed),(24,k.GetTickCount()),(76,5),(92,self.info.tid)]:self.map.write32(offset,value)
         if p1 != 255 or p2 != 255:
             if p1 not in range(6) or p2 not in range(6):raise ValueError('Both player selections must be 0..5')
             name=f'Local\\TH12CoopPlayers_{self.info.pid}'
@@ -50,7 +51,7 @@ class NetGame:
             try:self.players=Mapping(name,True)
             finally:k.CloseHandle(handle)
             for offset,value in [(0,0x43323154),(4,1),(8,p1),(12,p2)]:self.players.write32(offset,value)
-        result=subprocess.run([str(ROOT/'dist/injector.exe'),'--early','--quiet-test',str(self.info.pid),str(self.info.tid),str(ROOT/'dist/th12coop-native.dll')],capture_output=True,text=True,timeout=40,creationflags=subprocess.CREATE_NO_WINDOW)
+        result=subprocess.run([str(ROOT/'dist/injector.exe'),'--early','--quiet-test',str(self.info.pid),str(self.info.tid),str(ROOT/'dist'/self.native)],capture_output=True,text=True,timeout=40,creationflags=subprocess.CREATE_NO_WINDOW)
         if result.returncode:
             raise RuntimeError(f'Injection failed: {result.stdout} {result.stderr}')
         self.quiet_evidence=quiet_evidence(self.info.pid)
@@ -90,7 +91,7 @@ class NetGame:
                                 # The process may have exited between the poll
                                 # and TerminateProcess. Confirm that race rather
                                 # than treating an arbitrary API failure as exit.
-                                observed=k.WaitForSingleObject(self.info.process,0)
+                                observed=k.WaitForSingleObject(self.info.process,5000 if error == 5 else 0)
                                 if observed!=0:
                                     raise RuntimeError(f'TerminateProcess failed (Win32 {error}); owned process exit not confirmed')
                             else:
@@ -129,7 +130,7 @@ def main():
     out=args.out;out.mkdir(parents=True,exist_ok=True)
     try:
         for folder in (args.host_game,args.guest_game):
-            game=NetGame(folder,args.seed);games.append(game);report['pids'].append(game.info.pid)
+            game=NetGame(folder,args.seed,p1=0,p2=0);games.append(game);report['pids'].append(game.info.pid)
         for game in games:k.ResumeThread(game.info.thread)
         stage_begin=None;proof=[]
         for frame in range(1,args.frames+2):
