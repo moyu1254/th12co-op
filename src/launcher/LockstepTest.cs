@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Diagnostics;
+using System.IO.MemoryMappedFiles;
 using System.Text.Json;
 
 namespace TH12Coop;
@@ -25,6 +26,7 @@ internal static partial class SelfTests
         LockstepPeer? hostPeer = null, guestPeer = null;
         var notes = new List<string>();
         var quiet = new List<QuietTestEvidence>();
+        var localPlayerRoles = new List<uint>();
         string? failure = null;
         var peerErrors = new List<object>();
         void Status(string prefix, string text)
@@ -52,7 +54,14 @@ internal static partial class SelfTests
             else
             {
                 foreach (var peer in new[] { hostPeer, guestPeer })
-                    quiet.Add(QuietTestEnvironment.ReadEvidence(peer?.GameProcessId ?? throw new IOException("Game PID was not recorded.")));
+                {
+                    var pid = peer?.GameProcessId ?? throw new IOException("Game PID was not recorded.");
+                    quiet.Add(QuietTestEnvironment.ReadEvidence(pid));
+                    using var mapping = MemoryMappedFile.OpenExisting($"Local\\TH12CoopNet_{pid}");
+                    using var memory = mapping.CreateViewAccessor(120, 4, MemoryMappedFileAccess.Read);
+                    localPlayerRoles.Add(memory.ReadUInt32(0));
+                }
+                if (!localPlayerRoles.SequenceEqual(new uint[] { 1, 2 })) throw new IOException("Native local player roles were not assigned to host/guest.");
                 if (quiet.Any(evidence => !evidence.Passed)) throw new IOException("Quiet/background execution was not confirmed.");
             }
             if (finished == duration && disconnectTest)
@@ -100,7 +109,7 @@ internal static partial class SelfTests
             (!disconnectTest || disconnectRequested && disconnectMilliseconds < 10000);
         var result = new { passed, failure, peerErrors, seconds, elapsedMilliseconds = durationClock.ElapsedMilliseconds,
             protocol = SecureChannel.ProtocolVersion, rules = NetBridge.RulesVersion, nativeMenu,
-            startupPlayerOne = nativeMenu ? (int?)null : playerOne, startupPlayerTwo = nativeMenu ? (int?)null : playerTwo, quiet,
+            startupPlayerOne = nativeMenu ? (int?)null : playerOne, startupPlayerTwo = nativeMenu ? (int?)null : playerTwo, quiet, localPlayerRoles,
             hostGame = new { build = hostBuild.Id, exeHash = hostBuild.ExeHash },
             guestGame = new { build = guestBuild.Id, exeHash = guestBuild.ExeHash },
             disconnectTest, disconnectRequested, disconnectMilliseconds, ownedProcessesExited, host = Summary(hostPeer), guest = Summary(guestPeer), notes,

@@ -12,6 +12,7 @@ The original map was cross-checked against the installed executable, the [th-re-
 | Player activation / reset | `0x4360E0` | Runs native activation for both actors, including state and focus timers. |
 | Player tick / callback | `0x436B80` / `0x437640` | The original lifecycle callback runs both actors with separate input and singleton context. |
 | Player draw / callback | `0x4375E0` / `0x437650` | Draws both actors through native rendering. |
+| Focus ANM ownership | `0x43660B` | At creation, remote focus script 77 and its child 76 receive an ANM pre-draw callback that clears visibility. Native updates, interrupts, fading and destruction still run. Local and offline markers keep native rendering. |
 | Player destructor | `0x436250` | Releases P2's independent ANM/SHT before P1. |
 | Player options | `0x438590` | Rebuilds both actors' options when shared power changes. |
 | Shot damage | `0x439EB0` | Adds actor-local shot contributions with per-actor reductions; shared bomb damage is evaluated once. |

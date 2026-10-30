@@ -1,0 +1,498 @@
+{
+  "date": "2026-10-30",
+  "version": "0.3.2",
+  "prerelease": true,
+  "protocol": 4,
+  "rules": 6,
+  "ipc": 1,
+  "binaries": {
+    "TH12Coop.exe": "71c39c992303205b11717adcfbe9a2a2d158a9233f2bdf502c87d78e754915e1",
+    "TH12Coop.dll": "08e14f0f86c958a56296ef8a8a76362844714864d7c1b8f696284d069f9f6945",
+    "th12coop-native.dll": "46f1d1202d8abc74bffc0ea2055f263257b08556c22a2492d2dfc1e99c61d4e8",
+    "injector.exe": "3e3cee017d3acae36f7746c8d331efb0dc25f9a8bb6557179b56814bfb981a91",
+    "coreclr.dll": "1bc65b8d45474b19adf3ca85ce881087aff599ffc72b2c1a323e878227757b65",
+    "TH12Coop.runtimeconfig.json": "f93088763df733474d8df16646186166e13deab5d67f2be583356c75a31207c0",
+    "TH12Coop.deps.json": "794c874e139d14fd023f77813d74743e9c5467dc010eaa1ccb080d8acf521a93"
+  },
+  "quietTestSha256": "68cab2a9bca6407b8b071620f51b4d5f9c994c0b4af79087aceea566bf543eb8",
+  "launcherProjectSha256": "197e151d23a148b7f6e83852a7d62db49fa963e5147b44c11c21dbe3db350895",
+  "selfTests": {
+    "passed": true,
+    "groups": 19,
+    "managedGroups": 19,
+    "packageRegressionCases": 5
+  },
+  "focus": [
+    {
+      "profile": "retail-1.00a",
+      "passed": true,
+      "exeSha256": "e2939ba3f92e427216a619191a682a8197cc59a64eab99302a7b98811d6120a9",
+      "nativeSha256": "46f1d1202d8abc74bffc0ea2055f263257b08556c22a2492d2dfc1e99c61d4e8",
+      "matchedDigestFrames": 787,
+      "quiet": [
+        {
+          "devices": 1,
+          "buffers": 65,
+          "plays": 12,
+          "failures": 0,
+          "privateDesktop": false,
+          "windows": "hidden-noactivate",
+          "mute": "per-buffer DSBVOLUME_MIN before Play",
+          "nativePlaybackClocks": true,
+          "createdWindows": 1,
+          "blockedDialogs": 0,
+          "graphicsDevices": 1,
+          "visibleOwnedWindows": 0,
+          "ownsForeground": false
+        },
+        {
+          "devices": 1,
+          "buffers": 65,
+          "plays": 12,
+          "failures": 0,
+          "privateDesktop": false,
+          "windows": "hidden-noactivate",
+          "mute": "per-buffer DSBVOLUME_MIN before Play",
+          "nativePlaybackClocks": true,
+          "createdWindows": 1,
+          "blockedDialogs": 0,
+          "graphicsDevices": 1,
+          "visibleOwnedWindows": 0,
+          "ownsForeground": false
+        }
+      ],
+      "ownedHandlesClosed": true,
+      "sampleLabels": [
+        "both-focused",
+        "release-0-1",
+        "release-0-2",
+        "release-0-3",
+        "release-0-4",
+        "refocus-0",
+        "release-1-1",
+        "release-1-2",
+        "release-1-3",
+        "release-1-4",
+        "refocus-1",
+        "release-2-1",
+        "release-2-2",
+        "release-2-3",
+        "release-2-4",
+        "refocus-2",
+        "focus-ended",
+        "only-p1-focused",
+        "only-p2-focused"
+      ],
+      "bothFocusedViews": [
+        [
+          {
+            "owner": 1,
+            "script": 76,
+            "visible": true,
+            "drawCallback": false
+          },
+          {
+            "owner": 1,
+            "script": 77,
+            "visible": true,
+            "drawCallback": false
+          },
+          {
+            "owner": 2,
+            "script": 76,
+            "visible": false,
+            "drawCallback": true
+          },
+          {
+            "owner": 2,
+            "script": 77,
+            "visible": false,
+            "drawCallback": true
+          }
+        ],
+        [
+          {
+            "owner": 1,
+            "script": 76,
+            "visible": false,
+            "drawCallback": true
+          },
+          {
+            "owner": 1,
+            "script": 77,
+            "visible": false,
+            "drawCallback": true
+          },
+          {
+            "owner": 2,
+            "script": 76,
+            "visible": true,
+            "drawCallback": false
+          },
+          {
+            "owner": 2,
+            "script": 77,
+            "visible": true,
+            "drawCallback": false
+          }
+        ]
+      ]
+    },
+    {
+      "profile": "retail-1.00b",
+      "passed": true,
+      "exeSha256": "d8d644d2e64957a3031b1a1399d0502e1ddaa5252d2c4e492770ad6717827628",
+      "nativeSha256": "46f1d1202d8abc74bffc0ea2055f263257b08556c22a2492d2dfc1e99c61d4e8",
+      "matchedDigestFrames": 787,
+      "quiet": [
+        {
+          "devices": 1,
+          "buffers": 65,
+          "plays": 12,
+          "failures": 0,
+          "privateDesktop": false,
+          "windows": "hidden-noactivate",
+          "mute": "per-buffer DSBVOLUME_MIN before Play",
+          "nativePlaybackClocks": true,
+          "createdWindows": 1,
+          "blockedDialogs": 0,
+          "graphicsDevices": 1,
+          "visibleOwnedWindows": 0,
+          "ownsForeground": false
+        },
+        {
+          "devices": 1,
+          "buffers": 65,
+          "plays": 12,
+          "failures": 0,
+          "privateDesktop": false,
+          "windows": "hidden-noactivate",
+          "mute": "per-buffer DSBVOLUME_MIN before Play",
+          "nativePlaybackClocks": true,
+          "createdWindows": 1,
+          "blockedDialogs": 0,
+          "graphicsDevices": 1,
+          "visibleOwnedWindows": 0,
+          "ownsForeground": false
+        }
+      ],
+      "ownedHandlesClosed": true,
+      "sampleLabels": [
+        "both-focused",
+        "release-0-1",
+        "release-0-2",
+        "release-0-3",
+        "release-0-4",
+        "refocus-0",
+        "release-1-1",
+        "release-1-2",
+        "release-1-3",
+        "release-1-4",
+        "refocus-1",
+        "release-2-1",
+        "release-2-2",
+        "release-2-3",
+        "release-2-4",
+        "refocus-2",
+        "focus-ended",
+        "only-p1-focused",
+        "only-p2-focused"
+      ],
+      "bothFocusedViews": [
+        [
+          {
+            "owner": 1,
+            "script": 76,
+            "visible": true,
+            "drawCallback": false
+          },
+          {
+            "owner": 1,
+            "script": 77,
+            "visible": true,
+            "drawCallback": false
+          },
+          {
+            "owner": 2,
+            "script": 76,
+            "visible": false,
+            "drawCallback": true
+          },
+          {
+            "owner": 2,
+            "script": 77,
+            "visible": false,
+            "drawCallback": true
+          }
+        ],
+        [
+          {
+            "owner": 1,
+            "script": 76,
+            "visible": false,
+            "drawCallback": true
+          },
+          {
+            "owner": 1,
+            "script": 77,
+            "visible": false,
+            "drawCallback": true
+          },
+          {
+            "owner": 2,
+            "script": 76,
+            "visible": true,
+            "drawCallback": false
+          },
+          {
+            "owner": 2,
+            "script": 77,
+            "visible": true,
+            "drawCallback": false
+          }
+        ]
+      ]
+    },
+    {
+      "profile": "steam-1.00b",
+      "passed": true,
+      "exeSha256": "eb275a8c285fd8450fa5ac79fa730a759aeca8b2904aeb16d30e65859372a459",
+      "nativeSha256": "46f1d1202d8abc74bffc0ea2055f263257b08556c22a2492d2dfc1e99c61d4e8",
+      "matchedDigestFrames": 787,
+      "quiet": [
+        {
+          "devices": 1,
+          "buffers": 65,
+          "plays": 12,
+          "failures": 0,
+          "privateDesktop": false,
+          "windows": "hidden-noactivate",
+          "mute": "per-buffer DSBVOLUME_MIN before Play",
+          "nativePlaybackClocks": true,
+          "createdWindows": 1,
+          "blockedDialogs": 0,
+          "graphicsDevices": 1,
+          "visibleOwnedWindows": 0,
+          "ownsForeground": false
+        },
+        {
+          "devices": 1,
+          "buffers": 65,
+          "plays": 12,
+          "failures": 0,
+          "privateDesktop": false,
+          "windows": "hidden-noactivate",
+          "mute": "per-buffer DSBVOLUME_MIN before Play",
+          "nativePlaybackClocks": true,
+          "createdWindows": 1,
+          "blockedDialogs": 0,
+          "graphicsDevices": 1,
+          "visibleOwnedWindows": 0,
+          "ownsForeground": false
+        }
+      ],
+      "ownedHandlesClosed": true,
+      "sampleLabels": [
+        "both-focused",
+        "release-0-1",
+        "release-0-2",
+        "release-0-3",
+        "release-0-4",
+        "refocus-0",
+        "release-1-1",
+        "release-1-2",
+        "release-1-3",
+        "release-1-4",
+        "refocus-1",
+        "release-2-1",
+        "release-2-2",
+        "release-2-3",
+        "release-2-4",
+        "refocus-2",
+        "focus-ended",
+        "only-p1-focused",
+        "only-p2-focused"
+      ],
+      "bothFocusedViews": [
+        [
+          {
+            "owner": 1,
+            "script": 76,
+            "visible": true,
+            "drawCallback": false
+          },
+          {
+            "owner": 1,
+            "script": 77,
+            "visible": true,
+            "drawCallback": false
+          },
+          {
+            "owner": 2,
+            "script": 76,
+            "visible": false,
+            "drawCallback": true
+          },
+          {
+            "owner": 2,
+            "script": 77,
+            "visible": false,
+            "drawCallback": true
+          }
+        ],
+        [
+          {
+            "owner": 1,
+            "script": 76,
+            "visible": false,
+            "drawCallback": true
+          },
+          {
+            "owner": 1,
+            "script": 77,
+            "visible": false,
+            "drawCallback": true
+          },
+          {
+            "owner": 2,
+            "script": 76,
+            "visible": true,
+            "drawCallback": false
+          },
+          {
+            "owner": 2,
+            "script": 77,
+            "visible": true,
+            "drawCallback": false
+          }
+        ]
+      ]
+    }
+  ],
+  "bodyVisibility": {
+    "passed": true,
+    "rulesVersion": 6,
+    "diagnosticWrites": false,
+    "nativeSha256": "46f1d1202d8abc74bffc0ea2055f263257b08556c22a2492d2dfc1e99c61d4e8",
+    "matchedDigestFrames": 1048,
+    "visuals": [
+      [
+        1446130004,
+        1,
+        1,
+        0,
+        360,
+        0,
+        0,
+        360,
+        4294967295,
+        1887496447
+      ],
+      [
+        1446130004,
+        1,
+        2,
+        0,
+        0,
+        360,
+        360,
+        0,
+        1895825407,
+        4286638335
+      ]
+    ],
+    "quiet": [
+      {
+        "devices": 1,
+        "buffers": 65,
+        "plays": 212,
+        "failures": 0,
+        "privateDesktop": false,
+        "windows": "hidden-noactivate",
+        "mute": "per-buffer DSBVOLUME_MIN before Play",
+        "nativePlaybackClocks": true,
+        "createdWindows": 1,
+        "blockedDialogs": 0,
+        "graphicsDevices": 1,
+        "visibleOwnedWindows": 0,
+        "ownsForeground": false
+      },
+      {
+        "devices": 1,
+        "buffers": 65,
+        "plays": 212,
+        "failures": 0,
+        "privateDesktop": false,
+        "windows": "hidden-noactivate",
+        "mute": "per-buffer DSBVOLUME_MIN before Play",
+        "nativePlaybackClocks": true,
+        "createdWindows": 1,
+        "blockedDialogs": 0,
+        "graphicsDevices": 1,
+        "visibleOwnedWindows": 0,
+        "ownsForeground": false
+      }
+    ],
+    "exeSha256": [
+      "e2939ba3f92e427216a619191a682a8197cc59a64eab99302a7b98811d6120a9",
+      "e2939ba3f92e427216a619191a682a8197cc59a64eab99302a7b98811d6120a9"
+    ],
+    "ownedHandlesClosed": true
+  },
+  "loopback": {
+    "passed": true,
+    "seconds": 60,
+    "protocol": 4,
+    "rules": 6,
+    "localPlayerRoles": [
+      1,
+      2
+    ],
+    "hostGame": {
+      "build": "retail-1.00b",
+      "exeHash": "d8d644d2e64957a3031b1a1399d0502e1ddaa5252d2c4e492770ad6717827628"
+    },
+    "guestGame": {
+      "build": "steam-1.00b",
+      "exeHash": "eb275a8c285fd8450fa5ac79fa730a759aeca8b2904aeb16d30e65859372a459"
+    },
+    "quiet": [
+      {
+        "Devices": 1,
+        "Buffers": 65,
+        "Plays": 1520,
+        "Failures": 0,
+        "CreatedWindows": 1,
+        "BlockedDialogs": 0,
+        "GraphicsDevices": 1,
+        "VisibleOwnedWindows": 0,
+        "OwnsForeground": false
+      },
+      {
+        "Devices": 1,
+        "Buffers": 65,
+        "Plays": 1518,
+        "Failures": 0,
+        "CreatedWindows": 1,
+        "BlockedDialogs": 0,
+        "GraphicsDevices": 1,
+        "VisibleOwnedWindows": 0,
+        "OwnsForeground": false
+      }
+    ],
+    "ownedProcessesExited": true,
+    "scope": "Two actual TH12 processes, separate game state and working directories, pinned TLS 1.3 input lockstep over loopback. No video/audio stream. Not a second physical PC or WAN test.",
+    "confirmedFrames": [
+      3172,
+      3172
+    ],
+    "sourceConfigurationsAndScoresPreserved": true
+  },
+  "offlineStart": {
+    "passed": true,
+    "profile": "retail-1.00b",
+    "closed": true,
+    "sourceConfigurationsAndScoresPreserved": true
+  },
+  "scope": "Paired quiet ANM observations and actual launcher loopback TLS; not screenshots, a second physical PC or WAN. No session identifiers or process memory dumps included."
+}

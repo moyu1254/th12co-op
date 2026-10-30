@@ -1,0 +1,54 @@
+{
+  "date": "2026-10-30",
+  "scope": "Development build; paired quiet real-game ANM observations, not screenshots or WAN",
+  "nativeSha256": "252421c1e234da2bb6cec3e0f2f2c5080c25df0ef244144a68d9070a524542eb",
+  "quietSha256": "e36467fec331a826873d99e27d1f8c1767c0593d7a025fe71c91a06404696555",
+  "launcherAssemblySha256": "dbb87ef171ed206131074f1f9318c9d669182e7caa3911a7c202d9d906613d7b",
+  "launcherExeSha256": "034815bf3ceaa216ef2bc0ef8ca74fb724c005bf0852c3b278ec8807bc73e487",
+  "selfTests": {
+    "passed": true,
+    "groups": 19,
+    "managedGroups": 19,
+    "trackedFilesChecked": 452
+  },
+  "cases": [
+    {
+      "profile": "retail-1.00a",
+      "exeSha256": "e2939ba3f92e427216a619191a682a8197cc59a64eab99302a7b98811d6120a9",
+      "shots": [0, 4],
+      "passed": true,
+      "matchedDigestFrames": 787,
+      "ownedHandlesClosed": true
+    },
+    {
+      "profile": "retail-1.00b",
+      "exeSha256": "d8d644d2e64957a3031b1a1399d0502e1ddaa5252d2c4e492770ad6717827628",
+      "shots": [1, 3],
+      "passed": true,
+      "matchedDigestFrames": 787,
+      "ownedHandlesClosed": true
+    },
+    {
+      "profile": "steam-1.00b",
+      "exeSha256": "eb275a8c285fd8450fa5ac79fa730a759aeca8b2904aeb16d30e65859372a459",
+      "shots": [2, 5],
+      "passed": true,
+      "matchedDigestFrames": 787,
+      "ownedHandlesClosed": true
+    }
+  ],
+  "before": {
+    "release": "v0.3.0",
+    "nativeSha256": "95394dd5d354880ae635d570c51f6c7240863481dbd5d469ef2fd669462dc731",
+    "profile": "retail-1.00a",
+    "passed": false,
+    "expectedFailure": "Remote scripts 76 and 77 both visible while focused",
+    "matchedDigestFrames": 607,
+    "ownedHandlesClosed": true
+  },
+  "laterAttempts": {
+    "completed": false,
+    "reason": "Windows Security quarantined dist/injector.exe; CreateProcess Win32 225",
+    "securitySettingsChanged": false
+  }
+}

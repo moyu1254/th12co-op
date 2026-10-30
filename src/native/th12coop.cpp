@@ -244,6 +244,43 @@ static int __fastcall drawHook(unsigned char* p,void*){
  if(p==first&&second)drawHook(second,nullptr);
  return result;
 }
+// Focus creates bullet.anm 77 and its child 76, independently of Player::draw.
+// Keep their native updates/lifetimes, but suppress both at the ANM draw boundary.
+static void __fastcall hiddenFocusDraw(unsigned char* vm,void*){
+ mem<uint32_t>((uintptr_t)vm+0x47c)&=~2u;
+}
+static void hideFocusFamily(uintptr_t vm){
+ mem<void*>(vm+0x48c)=(void*)hiddenFocusDraw;
+ for(auto node=mem<uintptr_t>(vm+0x14);node;node=mem<uintptr_t>(node+4))
+  hideFocusFamily(mem<uintptr_t>(node));
+}
+static void __cdecl focusCreated(unsigned char* p){
+ const uint32_t local=coop_lockstep::LocalPlayer();
+ if(!second||!local||p==(local==1?first:second))return;
+ coop_effects::AnmListGuard guard;
+ auto manager=mem<uintptr_t>(0x4ce8cc);
+ const uint32_t id=mem<uint32_t>((uintptr_t)p+0x8258);
+ uintptr_t vm;const uintptr_t lookup=coop_game::Code(0x461900);
+ __asm {
+  push id
+  mov edx,manager
+  call lookup
+  mov vm,eax
+ }
+ if(vm)hideFocusFamily(vm);
+}
+static uintptr_t focusCreatedContinue;
+__declspec(naked) static void focusCreatedHook(){__asm {
+ mov dword ptr [edi+8258h],ecx
+ pushfd
+ pushad
+ push edi
+ call focusCreated
+ add esp,4
+ popad
+ popfd
+ jmp focusCreatedContinue
+}}
 static int __fastcall bombHook(void* p,void*){
  coop_characters::Scope scope(coop_characters::BombShot());
  auto old=singleton();
@@ -363,6 +400,8 @@ static bool installHooks(){
  static const unsigned char activateBytes[]={0x51,0xd9,0xee,0x56,0x8b,0x35,0x14,0x45,0x4b,0x00};
  static const unsigned char tickBytes[]={0x51,0xe8,0x3a,0xf5,0xff,0xff};
  static const unsigned char drawBytes[]={0x8b,0xc1,0x51,0xe8,0x88,0xff,0xff,0xff};
+ static const unsigned char focusCreatedBytes[]={0x89,0x8f,0x58,0x82,0x00,0x00};
+ focusCreatedContinue=coop_game::Code(0x436611);
  static const unsigned char alignBytes[]={0x55,0x8b,0xec,0x83,0xe4,0xf8};
  static const unsigned char rectBytes[]={0x83,0xec,0x10,0xd9,0x00};
  static const unsigned char itemBytes[]={0x8b,0x15,0xe8,0x44,0x4b,0x00};
@@ -383,6 +422,7 @@ static bool installHooks(){
  {0x4360e0,activateBytes,sizeof(activateBytes),(void*)activateHook,&activateOrig},
  {0x437640,tickBytes,sizeof(tickBytes),(void*)tickHook,nullptr},
  {0x437650,drawBytes,sizeof(drawBytes),(void*)drawHook,nullptr},
+ {0x43660b,focusCreatedBytes,sizeof(focusCreatedBytes),(void*)focusCreatedHook,nullptr},
  {0x439eb0,alignBytes,sizeof(alignBytes),(void*)damageHook,&damageOrig},
  {0x4377f0,rectBytes,sizeof(rectBytes),(void*)coop_collision::RectHook,&rectOrig},
  {0x437960,alignBytes,sizeof(alignBytes),(void*)coop_collision::CircleHook,&circleOrig},

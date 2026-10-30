@@ -2,9 +2,9 @@
 
 TH12の **通常版1.00a・通常版1.00b・Steam版1.00b** で、2人が別々の自機を操作するWindows用MODです。オンラインはWindows 11以降のTLS 1.3対応環境を使用します。実機での確認範囲は [検証結果](verification/RESULTS.md) に記録しています。
 
-バージョンは **0.3.1（Pre-release / Rules 6）** です。被弾後のボム補充を修正し、オンラインでは自分の当たり判定マーカーだけを表示して、相手の自機を薄く描画します。双方で同じリリースを使用してください。旧版のタグ・ZIPは保持しています。
+バージョンは **0.3.2（Pre-release / Rules 6）** です。オンラインで相手の当たり判定マーカーと周囲の模様が残る問題を修正しました。被弾後のボム補充と相手の自機を薄くする変更も含みます。双方で同じリリースを使用してください。旧版のタグ・ZIPは保持しています。
 
-[ダウンロード](https://github.com/moyu1254/th12co-op/releases/tag/v0.3.1) · [ドキュメント](docs/README.md) · [不具合報告・開発への参加](CONTRIBUTING.md) · [MIT License](LICENSE)
+[ダウンロード](https://github.com/moyu1254/th12co-op/releases/tag/v0.3.2) · [ドキュメント](docs/README.md) · [不具合報告・開発への参加](CONTRIBUTING.md) · [MIT License](LICENSE)
 
 別PC／WAN、物理ゲームパッドの操作・再接続、全機体の組み合わせでの全編クリア、原作との撃破時間・早回しの定量比較は未検証です。確認済みの範囲と火力補正の制約は [Rules 5の検証結果](verification/rules5/RESULTS.md) を参照してください。
 
@@ -12,10 +12,10 @@ TH12の **通常版1.00a・通常版1.00b・Steam版1.00b** で、2人が別々�
 
 [GitHub Releases](https://github.com/moyu1254/th12co-op/releases) から配布ZIPをダウンロードして展開します。GitHubの「Source code」ZIPには実行用バイナリを含みません。
 
-同じリリースにある `SHA256SUMS-v0.3.1.txt` と、ダウンロードしたZIPのSHA-256を照合できます。
+同じリリースにある `SHA256SUMS-v0.3.2.txt` と、ダウンロードしたZIPのSHA-256を照合できます。
 
 ```powershell
-Get-FileHash .\TH12COOP-v0_3_1-Windows.zip -Algorithm SHA256
+Get-FileHash .\TH12COOP-v0_3_2-Windows.zip -Algorithm SHA256
 ```
 
 - `Offline.cmd`：このPCで2人プレイを開始。
