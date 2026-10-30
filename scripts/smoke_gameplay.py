@@ -6,6 +6,7 @@ import argparse, ctypes, hashlib, json, struct, subprocess, sys, time
 from ctypes import wintypes
 from pathlib import Path
 from probe import Mapping, telemetry, k, read_process
+from quiet_test import QuietEnvironment, quiet_configuration, quiet_evidence
 ROOT=Path(__file__).resolve().parent.parent
 
 # Same Windows loader-entry fence as the launcher and test_native_lockstep.py.
@@ -27,11 +28,18 @@ k.GetExitCodeProcess.argtypes=[wintypes.HANDLE,ctypes.POINTER(wintypes.DWORD)];k
 class OwnedProcess:
     def __init__(self,folder):
         self.info=ProcessInfo();self.returncode=None;self.args=[str(folder/'th12.exe')]
+        self.quiet=QuietEnvironment(ROOT)
         startup=Startup();startup.cb=ctypes.sizeof(startup)
+        startup.desktop=self.quiet.name
         command=ctypes.create_unicode_buffer('"'+self.args[0]+'"')
         if not k.CreateProcessW(self.args[0],command,None,None,False,4,None,str(folder),ctypes.byref(startup),ctypes.byref(self.info)):
+            self.quiet.close()
             raise ctypes.WinError(ctypes.get_last_error())
         self.pid=self.info.pid
+        try:self.quiet.assign(self.info.process)
+        except Exception:
+            k.TerminateProcess(self.info.process,1);k.WaitForSingleObject(self.info.process,5000)
+            self.close_handles();raise
     def poll(self):
         if self.returncode is not None or not self.info.process:return self.returncode
         state=k.WaitForSingleObject(self.info.process,0)
@@ -42,7 +50,13 @@ class OwnedProcess:
         self.returncode=value.value
         return self.returncode
     def terminate(self):
-        if self.poll() is None and not k.TerminateProcess(self.info.process,0):raise ctypes.WinError(ctypes.get_last_error())
+        if self.poll() is None and not k.TerminateProcess(self.info.process,0):
+            error=ctypes.get_last_error()
+            # A process can finish between poll and termination. Windows also
+            # returns access denied while an earlier exit is still completing.
+            # Accept that race only after this owned handle is signaled.
+            try:self.wait(10)
+            except Exception:raise ctypes.WinError(error)
     def wait(self,timeout=None):
         if self.returncode is not None:return self.returncode
         result=k.WaitForSingleObject(self.info.process,0xffffffff if timeout is None else max(0,int(timeout*1000)))
@@ -55,6 +69,7 @@ class OwnedProcess:
     def close_handles(self):
         if self.info.thread:k.CloseHandle(self.info.thread);self.info.thread=None
         if self.info.process:k.CloseHandle(self.info.process);self.info.process=None
+        self.quiet.close()
 
 class Game:
     def __init__(self,folder):
@@ -67,14 +82,7 @@ class Game:
         if folder.parent!=ROOT.resolve() or not (folder.name=='game-smoke' or folder.name.startswith('game-test-')):
             raise ValueError('Smoke fixtures require a direct workspace game-smoke or game-test-* folder')
         self.folder=folder
-        cfg=bytearray((folder/'th12.cfg').read_bytes())
-        assert len(cfg)==60
-        if cfg[:4]!=b'\x01\x00\x12\x00':
-            cfg=bytearray((ROOT/'game'/'th12.cfg').read_bytes())
-            assert cfg[:4]==b'\x01\x00\x12\x00','Valid test configuration required'
-        cfg[0x1d]=1
-        flags=struct.unpack_from('<I',cfg,0x38)[0]&~0x100
-        struct.pack_into('<I',cfg,0x38,flags)
+        cfg=quiet_configuration((folder/'th12.cfg').read_bytes())
         (folder/'th12.cfg').write_bytes(cfg)
         self.proc=OwnedProcess(folder)
         boot_name=f'Local\\TH12CoopBoot_{self.proc.pid}'
@@ -85,7 +93,8 @@ class Game:
             self.boot=Mapping(boot_name,True)
         finally:k.CloseHandle(handle)
         for offset,value in [(0,0x42323154),(4,1),(8,self.proc.info.tid),(12,1)]:self.boot.write32(offset,value)
-        subprocess.run([str(ROOT/'dist/injector.exe'),'--early',str(self.proc.pid),str(self.proc.info.tid),str(ROOT/'dist/th12coop-smoke.dll')],check=True,capture_output=True,text=True,timeout=20)
+        subprocess.run([str(ROOT/'dist/injector.exe'),'--early','--quiet-test',str(self.proc.pid),str(self.proc.info.tid),str(ROOT/'dist/th12coop-smoke.dll')],check=True,capture_output=True,text=True,timeout=40,creationflags=subprocess.CREATE_NO_WINDOW)
+        self.quiet_evidence=quiet_evidence(self.proc.pid)
         for _ in range(100):
             try:self.map=Mapping(f'Local\\TH12Coop_{self.proc.pid}',True);break
             except OSError:time.sleep(.05)
@@ -124,6 +133,8 @@ class Game:
                 if ready is not None:
                     magic,version,device,_=struct.unpack('<4I',ready.read(0,16))
                     if magic==0x52323154 and version==1 and device==1 and state['status']==1:
+                        self.quiet_evidence=quiet_evidence(self.proc.pid)
+                        if self.quiet_evidence['failures']:raise RuntimeError(f'Audio guard failure: {self.quiet_evidence}')
                         self.ready=True;return
                 self.map.write32(44,k.GetTickCount());self.map.write32(8,0);self.map.write32(12,0);self.map.write32(16,3)
                 time.sleep(.05)

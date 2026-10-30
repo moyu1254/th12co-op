@@ -1,6 +1,5 @@
 # Local original-game files and private saves are never source distribution content.
-/game/
-/game-*/
+/game*/
 /sessions/
 /.cache/
 /build/
@@ -25,3 +24,10 @@
 *.p12
 *.key
 *.pem
+*.pyc
+*.rpy
+*.rep
+*.sav
+*.save
+scoreth12.dat
+th12.cfg

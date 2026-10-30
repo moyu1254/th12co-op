@@ -264,11 +264,11 @@ internal sealed class LockstepPeer
             sessionDirectory = await profile.Prepare(channel.Session, role, startup.Token);
             await File.WriteAllTextAsync(Path.Combine(sessionDirectory, "session.json"), JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }), startup.Token);
             starting = GameSession.Start(sessionDirectory, true, startup.Token, profile.NativePath, status,
-                new NetworkLaunch(manifest.Seed, testInstance, created => bridge = created));
+                new NetworkLaunch(manifest.Seed, testInstance, created => bridge = created), players: manifest.Players);
             if (await Task.WhenAny(starting, receiver) == receiver) await receiver;
             game = await starting;
             GameProcessId = game.Process.Id;
-            Native.SetForegroundWindow(game.Window);
+            if (!testInstance) Native.SetForegroundWindow(game.Window);
             await channel.Send(Record(0x12, 0, 16), lifetime.Token);
             var readyWait = ready.Task.WaitAsync(startup.Token);
             if (await Task.WhenAny(readyWait, receiver) == receiver) await receiver;
@@ -313,6 +313,15 @@ internal sealed class LockstepPeer
                     try { await task; } catch (Exception) when (lifetime.IsCancellationRequested) { }
                 }
                 game?.Dispose();
+                if (started && !testInstance && sessionDirectory != null)
+                {
+                    try { await profile.PersistLocal(sessionDirectory, CancellationToken.None); }
+                    catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                    {
+                        status("このPCの設定を保存できませんでした。" + error.Message);
+                        await WriteDiagnostic("local-settings-error.json", new { error = error.Message });
+                    }
+                }
                 if (sessionDirectory != null)
                 {
                     DigestTrace[] tail;

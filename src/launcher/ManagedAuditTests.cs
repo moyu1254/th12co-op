@@ -47,6 +47,35 @@ internal static partial class SelfTests
             await ExpectThrowsAsync<IOException>(() => fixture.Profile.Prepare(fixture.Session, 1, CancellationToken.None));
             Expect(!Directory.Exists(fixture.Destination), "failed preparation published partial assets");
         });
+        await Check("Online sessions exclude clear records and preserve the source save", async () =>
+        {
+            using var fixture = new PreparationFixture();
+            var score = RandomNumberGenerator.GetBytes(93);
+            var scorePath = Path.Combine(fixture.GameDirectory, "scoreth12.dat");
+            File.WriteAllBytes(scorePath, score);
+            File.WriteAllBytes(Path.Combine(fixture.GameDirectory, "score.dat"), score);
+            Directory.CreateDirectory(Path.Combine(fixture.GameDirectory, "replay"));
+            File.WriteAllBytes(Path.Combine(fixture.GameDirectory, "replay", "th12_01.rpy"), score);
+            var prepared = await fixture.Profile.Prepare(fixture.Session, 1, CancellationToken.None);
+            Expect(!File.Exists(Path.Combine(prepared, "scoreth12.dat")) && !File.Exists(Path.Combine(prepared, "score.dat")) &&
+                !Directory.Exists(Path.Combine(prepared, "replay")), "saved progress entered a session");
+            Expect(File.ReadAllBytes(scorePath).SequenceEqual(score), "source score changed");
+        });
+        await Check("Session settings persist only local fields and keep offline gameplay settings", async () =>
+        {
+            using var fixture = new PreparationFixture();
+            var offline = (byte[])fixture.Configuration.Clone();
+            offline[0x1e] = 2; offline[0x39] = 2; // Offline frameskip/hold-shot focus.
+            File.WriteAllBytes(Path.Combine(fixture.GameDirectory, "th12.cfg"), offline);
+            var prepared = await fixture.Profile.Prepare(fixture.Session, 1, CancellationToken.None);
+            var sessionSettings = (byte[])fixture.Configuration.Clone();
+            sessionSettings[0x1d] = 3; sessionSettings[0x20] = 70; sessionSettings[0x21] = 25; sessionSettings[4] = 12;
+            File.WriteAllBytes(Path.Combine(prepared, "th12.cfg"), sessionSettings);
+            await fixture.Profile.PersistLocal(prepared, CancellationToken.None);
+            var persisted = File.ReadAllBytes(Path.Combine(fixture.GameDirectory, "th12.cfg"));
+            Expect(persisted[0x1d] == 3 && persisted[0x20] == 70 && persisted[0x21] == 25 && persisted[4] == 12, "local options lost");
+            Expect(persisted[0x1e] == 2 && persisted[0x39] == 2, "offline gameplay settings overwritten");
+        });
         await Check("Game assets changed after the manifest was read are rejected", async () =>
         {
             using var fixture = new PreparationFixture();

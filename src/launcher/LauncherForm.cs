@@ -10,6 +10,11 @@ internal sealed class LauncherForm : Form
     private readonly ComboBox mode = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox games = new() { DropDownStyle = ComboBoxStyle.DropDownList, Enabled = false };
     private readonly Button browse = new() { Text = "参照", Enabled = false };
+    private readonly ComboBox characterOne = new() { DropDownStyle = ComboBoxStyle.DropDownList }, characterTwo = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly Label characterOneLabel = new() { Text = "1P", AutoSize = true, Anchor = AnchorStyles.Left }, characterTwoLabel = new() { Text = "2P", AutoSize = true, Anchor = AnchorStyles.Left };
+    private readonly Button inputSettingsButton = new() { Text = "入力設定", AutoSize = true }, gameSettingsButton = new() { Text = "ゲーム設定", AutoSize = true };
+    private InputSettings inputSettings = new();
+    private bool inputSettingsReady;
     private readonly TextBox address = new() { Text = "127.0.0.1" };
     private readonly Label addressLabel;
     private readonly NumericUpDown port = new() { Minimum = 1024, Maximum = 65535, Value = 3012 };
@@ -39,8 +44,8 @@ internal sealed class LauncherForm : Form
         BackColor = Background;
         ForeColor = Foreground;
         Font = new Font("Yu Gothic UI", 10F);
-        ClientSize = new Size(680, 705);
-        MinimumSize = new Size(696, 744);
+        ClientSize = new Size(680, 745);
+        MinimumSize = new Size(696, 784);
         StartPosition = FormStartPosition.CenterScreen;
         var content = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(28), ColumnCount = 1, RowCount = 10 };
         content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -85,16 +90,21 @@ internal sealed class LauncherForm : Form
         networkHint.ForeColor = Color.FromArgb(173, 183, 199);
         content.Controls.Add(networkHint);
 
-        var keys = new TableLayoutPanel { AutoSize = true, ColumnCount = 4, Dock = DockStyle.Top, Padding = new Padding(12), BackColor = Surface };
-        keys.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
-        keys.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
-        keys.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
-        keys.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
-        string[,] keyText = { { "", "移動", "ショット / ボム", "低速" }, { "1P / オンライン", "↑ ↓ ← →", "Z / X", "左Shift" }, { "オフライン 2P", "I K J L", "F / G", "D" } };
-        for (var row = 0; row < 3; ++row) for (var column = 0; column < 4; ++column)
-            keys.Controls.Add(new Label { Text = keyText[row, column], AutoSize = true, Margin = new Padding(3, 5, 3, 5), ForeColor = row == 0 ? Accent : Foreground }, column, row);
-        keys.Margin = new Padding(0, 0, 0, 22);
-        content.Controls.Add(keys);
+        var players = new TableLayoutPanel { AutoSize = true, ColumnCount = 2, Dock = DockStyle.Top, Padding = new Padding(12), BackColor = Surface, Margin = new Padding(0, 0, 0, 22) };
+        players.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 72));
+        players.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        foreach (var character in new[] { characterOne, characterTwo })
+        {
+            character.Items.AddRange(["霊夢 A", "霊夢 B", "魔理沙 A", "魔理沙 B", "早苗 A", "早苗 B"]);
+            character.SelectedIndex = 0; character.Dock = DockStyle.Fill;
+            character.Margin = new Padding(0, 3, 0, 9);
+        }
+        players.Controls.Add(characterOneLabel, 0, 0); players.Controls.Add(characterOne, 1, 0);
+        players.Controls.Add(characterTwoLabel, 0, 1); players.Controls.Add(characterTwo, 1, 1);
+        var settingsRow = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, 6, 0, 0) };
+        settingsRow.Controls.Add(inputSettingsButton); settingsRow.Controls.Add(gameSettingsButton);
+        players.Controls.Add(settingsRow, 1, 2);
+        content.Controls.Add(players);
         var buttons = new TableLayoutPanel { ColumnCount = 2, Dock = DockStyle.Top, Height = 45, Margin = new Padding(0, 0, 0, 14) };
         buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 72));
         buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 28));
@@ -113,23 +123,56 @@ internal sealed class LauncherForm : Form
         copy.Click += (_, _) => Clipboard.SetText(code.Text);
         start.Click += async (_, _) => await StartSession();
         browse.Click += async (_, _) => await BrowseGame();
+        inputSettingsButton.Click += (_, _) => EditInputSettings();
+        gameSettingsButton.Click += async (_, _) => await EditGameSettings();
         stop.Click += (_, _) => lifetime?.Cancel();
         FormClosing += OnClosing;
         SetMode();
         start.Enabled = false;
         Shown += async (_, _) =>
         {
+            string? settingsError = null;
+            try
+            {
+                inputSettings = InputSettingsStore.Load();
+                characterOne.SelectedIndex = inputSettings.CharacterOne;
+                characterTwo.SelectedIndex = inputSettings.CharacterTwo;
+                inputSettingsReady = true;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { settingsError = error.Message; }
             try
             {
                 SetStatus("ゲームを確認しています");
                 foreach (var choice in await GameLibrary.Discover(initialGameDirectory, CancellationToken.None)) games.Items.Add(choice);
                 if (games.Items.Count > 0) games.SelectedIndex = 0;
-                SetStatus(games.Items.Count == 0 ? "参照からTH12のフォルダーを選択してください" : "準備完了");
+                SetStatus(settingsError ?? (games.Items.Count == 0 ? "参照からTH12のフォルダーを選択してください" : "準備完了"));
             }
             catch (Exception error) { SetStatus(error.Message); }
             finally { games.Enabled = browse.Enabled = start.Enabled = true; }
-            if (this.autoStart && games.SelectedItem != null) await StartSession();
+            if (this.autoStart && inputSettingsReady && games.SelectedItem != null) await StartSession();
         };
+    }
+
+    private void EditInputSettings()
+    {
+        using var dialog = new InputSettingsForm(inputSettings);
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        try { InputSettingsStore.Save(dialog.Settings); inputSettings = dialog.Settings; inputSettingsReady = true; SetStatus("入力設定を保存しました"); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { SetStatus(error.Message); }
+    }
+
+    private async Task EditGameSettings()
+    {
+        if (games.SelectedItem is not GameChoice choice) { SetStatus("TH12のフォルダーを選択してください。"); return; }
+        start.Enabled = mode.Enabled = games.Enabled = browse.Enabled = gameSettingsButton.Enabled = false;
+        try
+        {
+            var directory = await GameLibrary.Prepare(choice, CancellationToken.None);
+            using var dialog = new GameSettingsForm(directory);
+            dialog.ShowDialog(this);
+        }
+        catch (Exception error) { SetStatus(error.Message); }
+        finally { start.Enabled = mode.Enabled = games.Enabled = browse.Enabled = gameSettingsButton.Enabled = true; }
     }
 
     private async Task BrowseGame()
@@ -174,6 +217,8 @@ internal sealed class LauncherForm : Form
         if (previousMode == 2) { joinAddress = address.Text; joinCode = code.Text; }
         var hosting = mode.SelectedIndex == 1;
         var online = mode.SelectedIndex != 0;
+        characterOneLabel.Text = online ? "自分" : "1P";
+        characterTwo.Visible = characterTwoLabel.Visible = !online;
         network.Visible = online;
         address.ReadOnly = mode.SelectedIndex != 2;
         addressLabel.Text = hosting ? "LAN IP" : "ホストIP";
@@ -222,8 +267,16 @@ internal sealed class LauncherForm : Form
     private async Task StartSession()
     {
         if (running != null) return;
+        if (!inputSettingsReady) { SetStatus("入力設定を開き、割り当てを確認して保存してください。"); return; }
         if (games.SelectedItem is not GameChoice choice) { SetStatus("TH12のフォルダーを選択してください。"); return; }
         var selected = mode.SelectedIndex;
+        var players = new PlayerSelection(characterOne.SelectedIndex, characterTwo.SelectedIndex);
+        try
+        {
+            inputSettings = inputSettings with { CharacterOne = players.PlayerOne, CharacterTwo = players.PlayerTwo };
+            InputSettingsStore.Save(inputSettings);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { SetStatus(error.Message); return; }
         var connectionCode = code.Text;
         var host = address.Text.Trim();
         if (selected != 0)
@@ -234,6 +287,7 @@ internal sealed class LauncherForm : Form
         }
         lifetime = new CancellationTokenSource();
         start.Enabled = mode.Enabled = games.Enabled = browse.Enabled = port.Enabled = generate.Enabled = delay.Enabled = false;
+        characterOne.Enabled = characterTwo.Enabled = inputSettingsButton.Enabled = gameSettingsButton.Enabled = false;
         address.ReadOnly = code.ReadOnly = true;
         stop.Enabled = true;
         SetStatus(selected == 2 ? "接続しています" : "起動しています");
@@ -246,9 +300,9 @@ internal sealed class LauncherForm : Form
                 var directory = await GameLibrary.Prepare(choice, lifetime.Token);
                 switch (selected)
                 {
-                    case 0: await RunOffline(directory, lifetime.Token); break;
-                    case 1: await OnlineSession.Host(directory, (int)port.Value, room, (int)delay.Value, SetStatus, lifetime.Token); break;
-                    default: await OnlineSession.Join(directory, host, (int)port.Value, connectionCode, SetStatus, lifetime.Token); break;
+                    case 0: await RunOffline(directory, players, lifetime.Token); break;
+                    case 1: await OnlineSession.Host(directory, (int)port.Value, room, (int)delay.Value, SetStatus, lifetime.Token, localCharacter: players.PlayerOne); break;
+                    default: await OnlineSession.Join(directory, host, (int)port.Value, connectionCode, SetStatus, lifetime.Token, localCharacter: players.PlayerOne); break;
                 }
             }
             await running;
@@ -264,14 +318,15 @@ internal sealed class LauncherForm : Form
             lifetime.Dispose(); lifetime = null; running = null;
             if (selected == 1) { room.Dispose(); room = RoomIdentity.Create(); }
             start.Enabled = mode.Enabled = games.Enabled = browse.Enabled = port.Enabled = generate.Enabled = delay.Enabled = true; stop.Enabled = false;
+            characterOne.Enabled = characterTwo.Enabled = inputSettingsButton.Enabled = gameSettingsButton.Enabled = true;
             SetMode();
             if (closing) { FormClosing -= OnClosing; Close(); }
         }
     }
 
-    private async Task RunOffline(string gameDirectory, CancellationToken token)
+    private async Task RunOffline(string gameDirectory, PlayerSelection players, CancellationToken token)
     {
-        using var game = await GameSession.Start(gameDirectory, false, token, startupStatus: SetStatus);
+        using var game = await GameSession.Start(gameDirectory, false, token, startupStatus: SetStatus, players: players);
         SetStatus("オフライン2人プレイ中");
         Native.SetForegroundWindow(game.Window);
         try { await game.Process.WaitForExitAsync(token); }

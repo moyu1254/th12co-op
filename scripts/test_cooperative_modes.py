@@ -18,7 +18,7 @@ def fresh_copy(source, mode, stage, shot):
     source=source.resolve()
     if not source.is_relative_to(ROOT.resolve()):
         raise ValueError('Use an already prepared workspace game copy, not an installed game folder')
-    target=ROOT/'game-mode-tests'/f'{mode}-{stage}-{shot}-{uuid.uuid4().hex[:10]}'
+    target=ROOT/f'game-test-mode-{mode}-{stage}-{shot}-{uuid.uuid4().hex[:10]}'
     target.mkdir(parents=True)
     names={'th12.exe','th12.dat','thbgm.dat'}
     names.update(p.name for p in source.glob('*.dll'))

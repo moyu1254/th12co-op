@@ -1,6 +1,8 @@
 # TH12 CO-OP threat model
 
-評価日: 2026-10-29。対象: D:/TH12CO-OP。実装の詳しい制限・接続方式は[通信設計](network-security-design.md)、最終試験の記録は[検証結果](../verification/RESULTS.md)を参照する。
+評価日: 2026-10-29。対象: TH12 CO-OP。実装の詳しい制限・接続方式は[通信設計](network-security-design.md)、最終試験の記録は[検証結果](../verification/RESULTS.md)を参照する。
+
+2026-10-30追記: 以下の評価時点はRules 3 / Protocol 3。現在の実装はRules 4 / Protocol 4 (`T12L4`)で、認証後の機体選択、マニフェストによる双方の選択確定、PC固有設定と共通設定の分離を追加した。新しい境界・形式は[現行通信設計](network-security-design.md)と[PC別設定](local-configuration.md)を参照。旧番号の記述を現行の接続仕様と扱わない。
 
 ## Executive summary
 
@@ -8,7 +10,7 @@
 
 ## Scope and assumptions
 
-- ユーザー確認済み: 非公開招待の2人利用。各PCが自分の正規TH12を実行し、入力を同期する。外部サービスは現時点で不要、デプロイしていない。
+- 想定する利用形態は、招待した2人による協力プレイ。各PCで所有する正規のTH12を実行し、入力を同期する。外部サービスは現時点では不要で、デプロイしていない。
 - Runtime範囲: src/launcher、src/native、src/injector。Windows 11、既知の通常版1.00a・通常版1.00b・Steam版1.00b、ユーザー権限のプロセスを前提とする。1.00aと1.00bのオンライン混在は拒否する。Steam版は利用者の正常なSteam起動と所有確認を前提とする。根拠: TH12Coop.Launcher.csproj、GameBuild.Supported、OnlineProfile.ValidateAssets、injector.cpp/isKnownGame。
 - 開発・配布範囲: build.ps1、scripts/Prepare-Game.ps1、scripts/Package.ps1。スモークDLLと同一PC複数ゲームのテスト分岐は開発経路であり、通信から選択させない。
 - 範囲外: 公開マッチング、外部中継の本番運用、競技用アンチチート、OS侵害・同一ユーザーのマルウェアからの完全な隔離。ゲーム原作のソースコードは提供されておらず、解析済みEXEへの接続を評価する。
@@ -128,8 +130,8 @@ flowchart LR
 
 ## Notes on use
 
-- 確認済み: 招待、TCP/TLS、manifest、入力、mapping、ローダー、ローカルファイル/ログの入口をモデル化した。各境界に対応する脅威を含めた。
-- runtimeと開発/スモーク経路を区別し、ユーザー確認済みの2人private招待を優先度へ反映した。新しい外部デプロイの許可とは解釈していない。
+- 確認済み: 招待、TCP/TLS、manifest、入力、mapping、ローダー、ローカルファイル/ログでのデータの受け渡しをモデル化した。各境界に対応する脅威を含めた。
+- runtimeと開発/スモーク経路を区別し、招待した2人での利用を前提に脅威の優先度を評価した。外部サービスのデプロイは評価対象に含めていない。
 - 任意のbuild名を互換と扱わず、既知プロファイルの検証後にのみ通常版1.00b/Steam版1.00bを同一群へ入れる。システム依存DLLが両方で`system`の場合、その識別値はシステムDLL全体のhash一致を意味しない。
 - ルール版3のdigestには共有復帰権・全滅状態・ボム所有者、damage source・ボム・スペル・ランク、アイテム・標的・衝突の保持状態、霊夢Aの現世代emitter/beamの所有者と確認済み座標・タイマーを含む。ポインタはactor IDや判定番号へ正規化し、無関係な演出や旧世代payloadは比較しない。ルール3でRA beam移動履歴の確認済み`+2A0..+363`、primary/async ECL命令位置と初期化済みscalar、UFO/報酬/ベントラー、弾Ex状態を追加した。raw ECL stackや一部の弾・レーザー・ホーミング状態は未収録で、完全snapshotは未実装。現在のdamage geometryの一致だけで将来の全挙動の一致を証明しない。
 - 通常の起動失敗・切断・中止では所有ゲームの終了を待って回収する。ランチャー異常終了時にも所有handleの閉鎖でゲームを終了させるJob Objectを実装し、Steam補助プロセス等の子プロセスはこのJobの対象に含めない。`--owner-exit-test`の起動記録と、外部runnerによるゲーム終了確認は別の証拠として扱う。ここでは実行試験の合格を宣言せず、検証結果へ集約する。

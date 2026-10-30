@@ -1,4 +1,4 @@
-# Native engine integration — cooperative rules 3
+# Native engine integration — cooperative rules 4
 
 This document describes the current source architecture. The player-facing contract is [the cooperative rules](cooperative-rules.md); executed tests, binary identities and remaining coverage limits belong in [verification/RESULTS.md](../verification/RESULTS.md). An implementation description is not a claim that every stage, character, spell or ending has been exercised.
 
@@ -12,7 +12,7 @@ The original map was cross-checked against the installed executable, the [th-re-
 | Player activation / reset | `0x4360E0` | Runs native activation for both actors, including state and focus timers. |
 | Player tick / callback | `0x436B80` / `0x437640` | The original lifecycle callback runs both actors with separate input and singleton context. |
 | Player draw / callback | `0x4375E0` / `0x437650` | Draws both actors through native rendering. |
-| Player destructor | `0x436250` | Releases P2 before P1 while preserving the shared ANM asset slot. |
+| Player destructor | `0x436250` | Releases P2's independent ANM/SHT before P1. |
 | Player options | `0x438590` | Rebuilds both actors' options when shared power changes. |
 | Shot damage | `0x439EB0` | Adds actor-local shot contributions with per-actor reductions; shared bomb damage is evaluated once. |
 | Rectangle / circle / laser collision | `0x4377F0` / `0x437960` / `0x437A60` | Evaluates collision and graze against both actors. |
@@ -22,7 +22,7 @@ The original map was cross-checked against the installed executable, the [th-re-
 
 Native update nodes are enabled and disabled by the game's stage and pause lifecycle. P2's separately registered nodes are removed after construction; P1's tick/draw callbacks own both passes. This avoids updating P2 during a pause or leaving its nodes disabled at stage start. The activation function has four direct call sites in stage/reset and pause retry handling; individual death and respawn remain in each actor's native tick state machine.
 
-Selected character/shot, power, bombs, score, fragments, item value and UFO inventory are team globals. The original replay format contains one input stream, so cooperative replay saves are rejected. Demos and original replay playback create one actor and retain native single-player paths.
+Character/shot dispatch globals are scoped to each actor. Each actor owns an independent native SHT and ANM allocation; P1 uses ANM slot 7 and P2 uses checked spare slot 26. Bomb dispatch retains the initiator's selection through completion/destruction. Power, bomb stock, score, fragments, item value and UFO inventory remain shared. Story and ending selection use P1. See [independent character integration](independent-characters.md). The original replay format contains one input stream, so cooperative replay saves are rejected. Demos and original replay playback create one actor and retain native single-player paths.
 
 ## Resources, aiming, collection and ownership
 
@@ -44,7 +44,7 @@ Bomb ticks and transition-time cancellation preserve the initiator, including Re
 
 ## Startup and online frame boundary
 
-Both peers load known executable profiles with the same game engine version, cooperative rules **3**, assets, MOD, local optional-dependency identity and 60-byte configuration. Retail 1.00b and Steam 1.00b may pair because the authorized Steam runtime game code and static data match retail 1.00b. Each peer's distribution ID must match its known executable hash. Retail 1.00a and 1.00b cannot pair. Protocol 3 carries the build/dependency identity and rules number; invitations use `T12L3`. Each PC renders and plays sound locally. No video or audio is sent.
+Both peers load known executable profiles with the same game engine version, cooperative rules **4**, assets, MOD, local optional-dependency identity and normalized shared configuration. Local display/audio/input configuration may differ. Retail 1.00b and Steam 1.00b may pair because the authorized Steam runtime game code and static data match retail 1.00b. Each peer's distribution ID must match its known executable hash. Retail 1.00a and 1.00b cannot pair. Protocol 4 carries the build/dependency identity, rules number and both players' selections; invitations use `T12L4`. Each PC renders and plays sound locally. No video or audio is sent. See [configuration isolation](local-configuration.md).
 
 Both offline and online games are created suspended. The injector parks the primary thread at the verified executable entry point (`0x46E7FD` for retail 1.00a, `0x46E81D` for retail 1.00b, `0x4D9310` for Steam 1.00b) while Windows finishes import loading, suspends it again, restores the original bytes, and loads the DLL through the resolved remote x86 `LoadLibraryW` address. `Local\TH12CoopBoot_<pid>` supplies verified primary-thread metadata independently of network input. Missing or invalid metadata is rejected. Retail hooks install before the launcher resumes the primary thread. There is no ordinary offline title-screen injection path and no executable file on disk is patched.
 

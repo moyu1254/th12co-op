@@ -142,9 +142,12 @@ static int __cdecl BombStartHook(){
  auto bomb=At<unsigned char*>(0x4b43c4);
  bool starting=enabled&&bomb&&At<int>((uintptr_t)bomb+0x3c)==0;
  int previousOwner=bombActor;
+ uint32_t previousShot=coop_characters::BombShot();
  if(starting)bombActor=Index(Player());
+ if(starting)coop_characters::LatchBomb(Player());
+ coop_characters::Scope character(Player());
  int result=((int(__cdecl*)())bombStartOriginal)();
- if(!starting||result!=0){bombActor=previousOwner;return result;}
+ if(!starting||result!=0){bombActor=previousOwner;coop_characters::RestoreBomb(previousShot);return result;}
  // The native initiator finishes its own deathbomb branch after this returns.
  // P1 may already have advanced timer7 to8 before P2 starts its bomb. Use the
  // shared frame's starting eligibility, without undoing any committed miss.
@@ -160,6 +163,7 @@ static void __cdecl CancelBomb(){
  // GUI stage-transition cancellation is outside the normal Bomb tick. Reimu B
  // emits its final explosion sources here, and those still belong to its owner.
  auto old=Player();
+ coop_characters::Scope character(coop_characters::BombShot());
  if(enabled&&bombActor>=0)Player()=Actor(bombActor);
  ((void(__cdecl*)())bombCancelOriginal)();
  Player()=old;
@@ -188,6 +192,7 @@ static int Damage(void* position,void* boxSize,void* original){
  int owner=bombActor>=0?bombActor:0;
  for(int n=0;n<2;n++){
   auto p=Actor(n);Player()=p;suppressBomb=n!=owner;
+  coop_characters::Scope character(p);
   int amount=fn(position,boxSize);
   if(State(p)==0||State(p)==2)amount/=5;
   auto spell=At<unsigned char*>(0x4b43cc);auto bomb=At<unsigned char*>(0x4b43c4);

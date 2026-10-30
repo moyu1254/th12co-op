@@ -129,9 +129,14 @@ static uint32_t RunResourceAudit(uint32_t caseId,uint32_t* details){
   At<int>((uintptr_t)firstActor+0xa28)=2;
   int missed=Damage(pos,box,damageOrig);check(missed==22,3);details[5]=missed;
   At<int>((uintptr_t)firstActor+0xa28)=1;
+  // This fixture has no boss. Scope the synthetic spell classification to the
+  // damage query: the later native Spellcard tick requires a real active boss.
+  const uint32_t spellFlags=At<uint32_t>((uintptr_t)spell+0x7c);
+  const int spellId=At<int>((uintptr_t)spell+0x78);
   At<uint32_t>((uintptr_t)spell+0x7c)|=1;At<int>((uintptr_t)spell+0x78)=93;
   Invulnerable(firstActor,40);Invulnerable(secondActor,0);
   int protectedDamage=Damage(pos,box,damageOrig);check(protectedDamage==22,4);details[6]=protectedDamage;
+  At<uint32_t>((uintptr_t)spell+0x7c)=spellFlags;At<int>((uintptr_t)spell+0x78)=spellId;
  }else if(caseId==4){
   Player()=secondActor;int start=((int(__cdecl*)())coop_game::Code(0x406bd0))();
   check(start==0&&bombActor==1,0);

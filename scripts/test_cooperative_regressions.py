@@ -20,14 +20,15 @@ def sha(path):
 def run_owned(command, log, timeout=300):
     # Leave the parent alive until its owned descendants have been terminated.
     # subprocess.run(timeout=...) kills just Python, bypassing Game.close().
-    process = subprocess.Popen(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
+    process = subprocess.Popen(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT,
+                               creationflags=subprocess.CREATE_NO_WINDOW)
     try:
         return process.wait(timeout=timeout)
     except BaseException:
         if process.poll() is None:
             subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                           timeout=15, check=True)
+                           timeout=15, check=True, creationflags=subprocess.CREATE_NO_WINDOW)
             process.wait(timeout=15)
         raise
 

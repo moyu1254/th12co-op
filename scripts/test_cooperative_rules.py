@@ -8,6 +8,7 @@ import argparse, hashlib, json, struct, time
 from pathlib import Path
 from smoke_gameplay import Game, ROOT
 from probe import Mapping
+from quiet_test import quiet_evidence
 
 def run(folder, output, family, case, shot):
     folder = folder.resolve()
@@ -16,6 +17,8 @@ def run(folder, output, family, case, shot):
     report = {'family': family, 'case': case, 'shot': shot, 'game': str(folder),
               'exe_sha256': hashlib.sha256((folder/'th12.exe').read_bytes()).hexdigest(),
               'smoke_sha256': hashlib.sha256((ROOT/'dist/th12coop-smoke.dll').read_bytes()).hexdigest(),
+              'injector_sha256': hashlib.sha256((ROOT/'dist/injector.exe').read_bytes()).hexdigest(),
+              'guard_sha256': hashlib.sha256((ROOT/'dist/th12coop-quiet-test.dll').read_bytes()).hexdigest(),
               'fixture_mutates_gameplay': True, 'passed': False}
     try:
         game = Game(folder)
@@ -33,6 +36,7 @@ def run(folder, output, family, case, shot):
         assert (game.u32(0x4b0c90),game.u32(0x4b0c94)) == (shot//2,shot%2)
         audit = Mapping(f'Local\\TH12CoopAudit_{game.proc.pid}', True)
         assert struct.unpack('<2I',audit.read(0,8)) == (0x41423154,1)
+        report['quietBeforeFixture'] = quiet_evidence(game.proc.pid)
         audit.write32(16,family)
         audit.write32(20,case)
         audit.write32(8,1)
@@ -44,16 +48,52 @@ def run(folder, output, family, case, shot):
         report['failure_mask'] = f'{result:08x}'
         report['details'] = list(struct.unpack('<32I',audit.read(32,128)))
         assert result == 0, report
+        if family == 1 and case == 3:
+            # Damage's temporary spell context must be gone before the real
+            # Spellcard tick runs; otherwise a boss-less stage can dereference
+            # a null boss after the fixture has already reported success.
+            game.run(0, 0, .1)
+            report['postFixtureAlive'] = True
         report['passed'] = True
     except Exception as error:
         report['error'] = str(error)
         raise
     finally:
-        if audit: audit.close()
-        if game: game.close()
+        if audit:
+            # A fixture may finish before a later engine callback fails. The
+            # external mapping stays valid even if the owned game has exited.
+            report['fixtureCompleted'] = struct.unpack('<I', audit.read(12, 4))[0] == 1
+            if report['fixtureCompleted']:
+                report['failure_mask'] = f"{struct.unpack('<I', audit.read(24, 4))[0]:08x}"
+                report['details'] = list(struct.unpack('<32I', audit.read(32, 128)))
+            audit.close()
+        if game:
+            try:
+                report['quiet'] = quiet_evidence(game.proc.pid)
+                quiet = report['quiet']
+                if not quiet['devices'] or not quiet['graphicsDevices'] or quiet['failures'] or quiet['visibleOwnedWindows'] or quiet['ownsForeground']:
+                    report['passed'] = False
+                    report['quietError'] = 'Audio/window guard evidence did not pass'
+            except Exception as error:
+                report['passed'] = False
+                report['quietError'] = str(error)
+            finally:
+                try:game.close()
+                except Exception as error:
+                    report['passed'] = False
+                    report['cleanupError'] = str(error)
+                report['processExitCode'] = game.proc.returncode
+                if game.proc.returncode != 0:
+                    report['passed'] = False
+                    report['unexpectedExit'] = True
+                report['ownedHandlesClosed'] = not game.proc.info.process and not game.proc.info.thread
         output.mkdir(parents=True,exist_ok=True)
+        native_log = folder / 'th12coop-native.log'
+        if not report['passed'] and native_log.exists():
+            (output/f'family-{family}-case-{case}-shot-{shot}.native.log').write_bytes(native_log.read_bytes())
         (output/f'family-{family}-case-{case}-shot-{shot}.json').write_text(json.dumps(report,indent=2),encoding='utf8')
         print(json.dumps(report),flush=True)
+    return report['passed']
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser()
@@ -63,4 +103,4 @@ if __name__=='__main__':
     parser.add_argument('--case',type=int,required=True)
     parser.add_argument('--shot',type=int,default=0,choices=range(6))
     args=parser.parse_args()
-    run(args.game,args.out,args.family,args.case,args.shot)
+    raise SystemExit(0 if run(args.game,args.out,args.family,args.case,args.shot) else 1)

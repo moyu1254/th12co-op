@@ -88,6 +88,7 @@ static int Tick(unsigned char* vm,uint32_t tail,void* original){
  // can touch an old Player damage-source pointer or attach to a new actor.
  if(owner>2||At<uint32_t>((uintptr_t)payload+tail+4)!=generation||!coop_resources::enabled)return 1;
  auto actor=coop_resources::Actor(owner-1);if(!actor)return 1;
+ coop_characters::Scope character(actor);
  auto old=coop_resources::Player();coop_resources::Player()=actor;
  int result=fn(vm,nullptr);
  coop_resources::Player()=old;return result;

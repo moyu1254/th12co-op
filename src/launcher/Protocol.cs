@@ -18,7 +18,7 @@ internal sealed class RoomIdentity : IDisposable
         Certificate = certificate;
         Capability = capability;
         var invite = SHA256.HashData(certificate.RawData).Concat(capability).ToArray();
-        Invite = "T12L3." + Convert.ToBase64String(invite).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        Invite = "T12L4." + Convert.ToBase64String(invite).TrimEnd('=').Replace('+', '-').Replace('/', '_');
     }
 
     public static RoomIdentity Create()
@@ -41,7 +41,7 @@ internal sealed class RoomIdentity : IDisposable
     public static (byte[] CertificateHash, byte[] Capability) Parse(string code)
     {
         code = code.Trim();
-        if (!code.StartsWith("T12L3.", StringComparison.Ordinal)) throw new ArgumentException("このバージョンのルームコードを入力してください。");
+        if (!code.StartsWith("T12L4.", StringComparison.Ordinal)) throw new ArgumentException("このバージョンのルームコードを入力してください。");
         var encoded = code[6..].Replace('-', '+').Replace('_', '/');
         try
         {
@@ -62,7 +62,7 @@ internal sealed class RoomIdentity : IDisposable
 internal sealed class SecureChannel : IDisposable
 {
     internal const int MaximumPayload = 4096;
-    internal const ushort ProtocolVersion = 3;
+    internal const ushort ProtocolVersion = 4;
     private readonly TcpClient client;
     private readonly SslStream stream;
     private readonly SemaphoreSlim writer = new(1, 1);

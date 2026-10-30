@@ -12,6 +12,7 @@
 #include "coop_boot.h"
 #include "patch.h"
 #include "coop_scorecompat.h"
+#include "coop_characters.h"
 
 struct Shared {
     uint32_t magic, version;
@@ -64,6 +65,7 @@ static bool actorEligible(unsigned char* p){return coop_resources::Eligible(p);}
 #include "coop_audit.h"
 static uint64_t cooperativeStateHash(){
  coop_lockstep::Hash h;
+ coop_characters::Append(h);
  const uint64_t resources=coop_resources::OwnStateHash(),items=coop_items::DeterministicStateHash();
  h.word((uint32_t)resources);h.word((uint32_t)(resources>>32));
  h.word((uint32_t)items);h.word((uint32_t)(items>>32));
@@ -87,6 +89,7 @@ static void resetCooperativeState(){
  coop_effects::Reset();
 }
 static void publish(){
+ coop_characters::Publish();
  if(!ipc)return;
  ipc->status=second?2:1;
  if(first){ipc->p1x=mem<float>((uintptr_t)first+0x97c);ipc->p1y=mem<float>((uintptr_t)first+0x980);}
@@ -101,6 +104,10 @@ static void publish(){
 }
 static void* __cdecl createHook(){
  auto create=(void*(__cdecl*)())createOrig;
+ if(!creating&&!coop_characters::SinglePlayer()){
+  coop_characters::BeginActors();
+  coop_characters::BeginStage();
+ }
  auto p=(unsigned char*)create();
  if(!p||creating)return p;
  cooperativeRun=false;
@@ -109,9 +116,27 @@ static void* __cdecl createHook(){
  // Demos/replays keep the original single input stream.
  auto gm=mem<unsigned char*>(0x4b44e8);
  if((mem<uint32_t>(0x4b0ce0)&0x20)||(gm&&mem<int>((uintptr_t)gm+0x74)))return p;
+ auto anm=mem<uintptr_t>(0x4ce8cc);
+ if(!anm||mem<void*>(anm+0x4b50c0+26*4)){
+  ipc->status=0x80000004;coop_lockstep::Fail(19);log("Independent player ANM slot is unavailable");
+  for(;;)Sleep(10);
+ }
  creating=true;
- second=(unsigned char*)create();
+ // Each actor loads its own SHT. P2's ANM has a permanent independent slot,
+ // including late-running projectiles and bomb effects.
+ auto cached=mem<void*>(0x4ce8a8);
+ const auto maximum=mem<uint32_t>(0x4b0cd0),unit=mem<uint32_t>(0x4b0cd4);
+ mem<void*>(0x4ce8a8)=nullptr;
+ coop_characters::constructionSlot=26;
+ {
+  coop_characters::Scope scope(coop_characters::active[1]);
+  second=(unsigned char*)create();
+ }
+ coop_characters::constructionSlot=7;
+ mem<void*>(0x4ce8a8)=cached;
+ mem<uint32_t>(0x4b0cd0)=maximum;mem<uint32_t>(0x4b0cd4)=unit;
  creating=false;
+ coop_characters::Bind(first,second);
  singleton()=first;
  previous[0]=previous[1]=0;
  if(second){
@@ -139,29 +164,36 @@ static void __stdcall destroyHook(void* p){
  if(p==first)bombOwner=nullptr;
  if(p==first && second){
   auto p2=second;second=nullptr;
-  // Player::destructor owns the shared ANM slot 7. Temporarily remove that
-  // ownership while destroying P2's own nodes, shot data and embedded VM buffers.
+  // Native destruction addresses slot 7. Give it P2's slot during destruction
+  // so its own ANM VMs/textures and SHT are released exactly once.
   auto anm=mem<unsigned char*>(0x4ce8cc);
   auto slot=(uintptr_t)anm+0x4b50dc;
   void* asset=mem<void*>(slot);void* cached=mem<void*>(0x4ce8a8);
   uint32_t mode=mem<uint32_t>(0x4b0ce0);
-  mem<void*>(slot)=nullptr;mem<uint32_t>(0x4b0ce0)=mode&~1u;
-  ((void(__stdcall*)(void*))destroyOrig)(p2);
+  mem<void*>(slot)=mem<void*>((uintptr_t)anm+0x4b50c0+26*4);mem<uint32_t>(0x4b0ce0)=mode&~1u;
+  {coop_characters::Scope scope(coop_characters::active[1]);((void(__stdcall*)(void*))destroyOrig)(p2);}
+  mem<void*>((uintptr_t)anm+0x4b50c0+26*4)=nullptr;
   mem<void*>(slot)=asset;mem<void*>(0x4ce8a8)=cached;mem<uint32_t>(0x4b0ce0)=mode;
   ((void(__cdecl*)(void*))coop_game::Code(0x46ca2f))(p2);
   singleton()=first;
   log("Second Player resources released");
  }
- ((void(__stdcall*)(void*))destroyOrig)(p);
- if(p==first){first=nullptr;resetCooperativeState();publish();}
+ if(creating){
+  auto anm=mem<uintptr_t>(0x4ce8cc);auto slot=anm+0x4b50dc;
+  auto asset=mem<void*>(slot);auto mode=mem<uint32_t>(0x4b0ce0);
+  mem<void*>(slot)=mem<void*>(anm+0x4b50c0+26*4);mem<uint32_t>(0x4b0ce0)=mode&~1u;
+  ((void(__stdcall*)(void*))destroyOrig)(p);
+  mem<void*>(anm+0x4b50c0+26*4)=nullptr;mem<void*>(slot)=asset;mem<uint32_t>(0x4b0ce0)=mode;
+ }else {coop_characters::Scope scope((unsigned char*)p);((void(__stdcall*)(void*))destroyOrig)(p);}
+ if(p==first){first=nullptr;coop_characters::Bind(nullptr,nullptr);resetCooperativeState();publish();}
 }
 static void __cdecl activateHook(){
  auto original=(void(__cdecl*)())activateOrig;
  auto current=singleton();
- original();
+ {coop_characters::Scope scope(current);original();}
  if(current==first&&second){
   singleton()=second;
-  original();
+  {coop_characters::Scope scope(second);original();}
   singleton()=current;
   log("Both Player objects activated through native reset");
   coop_resources::OnActivate();coop_targeting::Reset();coop_collision::Reset();coop_items::Reset();
@@ -179,7 +211,8 @@ static int __fastcall tickHook(unsigned char* p,void*){
  auto bomb=mem<unsigned char*>(0x4b43c4);
  int before=bomb?mem<int>((uintptr_t)bomb+0x3c):0;
  coop_resources::BeforeTick(p);
- int result=((int(__stdcall*)(void*))coop_game::Code(0x436b80))(p);
+ int result;
+ {coop_characters::Scope scope(p);result=((int(__stdcall*)(void*))coop_game::Code(0x436b80))(p);}
  coop_resources::AfterTick(p);
  if(bomb&&before==0&&mem<int>((uintptr_t)bomb+0x3c)==1)bombOwner=p;
  memcpy((void*)GAME_INPUT,saved,sizeof(saved));singleton()=old;
@@ -188,6 +221,7 @@ static int __fastcall tickHook(unsigned char* p,void*){
  publish();return result;
 }
 static int __fastcall drawHook(unsigned char* p,void*){
+ coop_characters::Scope scope(p);
  auto old=singleton();singleton()=p;
  uint32_t color=mem<uint32_t>((uintptr_t)p+0x3d0);
  if(p==second)mem<uint32_t>((uintptr_t)p+0x3d0)=(color&0xff000000)|0x80e8ff;
@@ -203,6 +237,7 @@ static int __fastcall drawHook(unsigned char* p,void*){
  return result;
 }
 static int __fastcall bombHook(void* p,void*){
+ coop_characters::Scope scope(coop_characters::BombShot());
  auto old=singleton();
  if(bombOwner && (bombOwner==first||bombOwner==second))singleton()=bombOwner;
  int result;uintptr_t target=coop_game::Code(0x406cc0);
@@ -216,9 +251,9 @@ static int __fastcall bombHook(void* p,void*){
 static void __stdcall optionsHook(unsigned char* p){
  auto old=singleton();singleton()=p;
  auto fn=(void(__stdcall*)(void*))optionsOrig;
- fn(p);
+ {coop_characters::Scope scope(p);fn(p);}
  auto other=p==first?second:p==second?first:nullptr;
- if(other){singleton()=other;fn(other);}
+ if(other){singleton()=other;coop_characters::Scope scope(other);fn(other);}
  singleton()=old;
 }
 static int __stdcall damageHook(void* position,void* boxSize){
@@ -263,6 +298,7 @@ static uint32_t __cdecl smokeInput(uint32_t physical){
 #ifdef COOP_SMOKE_TEST
  if(ipc&&(ipc->flags&2)&&(uint32_t)(GetTickCount()-ipc->heartbeat)<=1000)return ipc->p1;
 #endif
+ if(ipc&&(ipc->flags&1))return (uint32_t)(GetTickCount()-ipc->heartbeat)<=1000?(ipc->p1&0x1fb):0;
  return physical;
 }
 __declspec(naked) static void pollHook(){
@@ -343,6 +379,7 @@ static bool installHooks(){
  coop_force::Register(registry);
  coop_effects::Register(registry);
  coop_scorecompat::Register(registry);
+ coop_characters::Register(registry);
  if(!registry.Validate()){
   ipc->status=0x80000001;
   if(logfile)fprintf(logfile,"Unsupported signature at %08lx; no hooks applied\n",(unsigned long)registry.FailedAddress());
@@ -404,6 +441,7 @@ static DWORD WINAPI start(void*){
  if(!coop_game::SelectLayout()){ipc->status=0x80000001;log("Unsupported executable layout; no hooks applied");return 1;}
  if(!coop_lockstep::Initialize(log)){ipc->status=0x80000003;log("Invalid lockstep mapping");return 1;}
  if(!coop_boot::Initialize()){ipc->status=0x80000004;log("Early-start metadata is missing or invalid");return 1;}
+ if(!coop_characters::Initialize()){ipc->status=0x80000004;coop_lockstep::Fail(18);log("Invalid player selection metadata");return 1;}
  const unsigned char seedCall[]={0xff,0x15,0x98,0x82,0x49,0x00};
  if(coop_game::steam&&memcmp((void*)coop_game::Code(0x42f562),seedCall,sizeof(seedCall))){
   if(armSteamBootstrap())return 0;

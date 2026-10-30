@@ -13,12 +13,13 @@ from pathlib import Path
 import re
 import stat
 import struct
+import subprocess
 import unicodedata
 import zipfile
 import zlib
 
 ROOT = Path(__file__).resolve().parent.parent
-ROOT_FILES = ("README.md", "Start.cmd", "Offline.cmd", "build.ps1")
+ROOT_FILES = ("README.md", "LICENSE", "NOTICE.md", "CONTRIBUTING.md", "Start.cmd", "Offline.cmd", "build.ps1")
 SOURCE_DIRS = ("src", "scripts", "docs", "licenses", "profiles", "verification")
 REQUIRED_FILES = {"dist/TH12Coop.exe", "dist/TH12Coop.dll", "dist/th12coop-native.dll", "dist/injector.exe",
                   "dist/th12-online.cfg", "dist/coreclr.dll", "dist/TH12Coop.runtimeconfig.json",
@@ -26,7 +27,7 @@ REQUIRED_FILES = {"dist/TH12Coop.exe", "dist/TH12Coop.dll", "dist/th12coop-nativ
 EXCLUDED = {"bin", "obj", "__pycache__"}
 MAX_ENTRIES, MAX_FILE, MAX_TOTAL, MAX_ARCHIVE = 20000, 64 << 20, 1 << 30, 512 << 20
 CONFIG_HASH = "9d3016fdf6f7c1395a399de7de0081b0fa766787b4e0c472a2564ca713833a8f"
-SECRET = re.compile(rb"-----BEGIN (?:RSA |EC |OPENSSH |ENCRYPTED )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{50,}|T12L3\.[A-Za-z0-9_-]{86}")
+SECRET = re.compile(rb"-----BEGIN (?:RSA |EC |OPENSSH |ENCRYPTED )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{50,}|T12L[34]\.[A-Za-z0-9_-]{86}")
 FORBIDDEN_DIRS = EXCLUDED | {".git", ".vs", ".cache", "node_modules", "sessions", "replay", "replays", "save", "saves", "research", "artifacts"}
 FORBIDDEN_EXTS = {".dat", ".rpy", ".rep", ".sav", ".save", ".bgm", ".anm", ".ecl", ".sht", ".msg", ".std", ".pdb", ".pyc", ".log", ".dmp", ".pfx", ".p12", ".key", ".pem", ".wav", ".ogg", ".mp3", ".flac", ".m4a", ".mp4", ".webm", ".mov", ".avi", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".ico", ".dds"}
 
@@ -93,22 +94,27 @@ def expected_manifest():
             directories.add(parent.as_posix())
             parent = parent.parent
 
-    def walk(path, source=False):
+    def walk(path):
         regular(path, True)
         for child in sorted(path.iterdir()):
             if not visible(child):
                 continue
-            if source and child.name.casefold() in EXCLUDED and child.is_dir():
-                continue
             regular(child, child.is_dir())
             if child.is_dir():
-                if not source:
-                    directories.add(child.relative_to(ROOT).as_posix())
-                walk(child, source)
+                directories.add(child.relative_to(ROOT).as_posix())
+                walk(child)
             else:
                 add(child)
 
-    for name in ROOT_FILES:
+    tracked = subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z", "--", *ROOT_FILES, *SOURCE_DIRS],
+                             capture_output=True, check=True).stdout.decode("utf-8").split("\0")
+    require(any(tracked), "Packaging requires tracked source files")
+    for name in filter(None, tracked):
+        safe_path(name)
+        path = ROOT
+        for part in name.split("/")[:-1]:
+            path = path / part
+            regular(path, True)
         add(ROOT / name)
     dist = ROOT / "dist"
     regular(dist, True)
@@ -120,16 +126,13 @@ def expected_manifest():
             walk(child)
         else:
             name = child.name.casefold()
-            if any(fnmatch.fnmatchcase(name, pattern) for pattern in ("*-test-*", "*-results.*", "*-smoke*", "*.pdb")):
+            if any(fnmatch.fnmatchcase(name, pattern) for pattern in ("*-test-*", "*-test.*", "*-results.*", "*-smoke*", "*.pdb")):
                 continue
             add(child)
-    for name in SOURCE_DIRS:
-        source = ROOT / name
-        if source.exists():
-            walk(source, True)
     require(len(files) <= MAX_ENTRIES, "Too many expected files")
     require(len({name.casefold() for name in files}) == len(files), "Case-colliding source paths")
-    require(REQUIRED_FILES <= files.keys(), f"Required distribution inputs are missing: {sorted(REQUIRED_FILES - files.keys())}")
+    required = REQUIRED_FILES | set(ROOT_FILES)
+    require(required <= files.keys(), f"Required distribution inputs are missing: {sorted(required - files.keys())}")
     return files, directories
 
 
@@ -140,7 +143,7 @@ def allowed_file(name):
     require(not any(p in FORBIDDEN_DIRS or p == "game" or p.startswith("game-") for p in lower[:-1]), f"Forbidden directory: {name}")
     require(suffix not in FORBIDDEN_EXTS, f"Forbidden asset/media/debug/key extension: {name}")
     require(not (lower[-1].startswith(".env") or lower[-1] in {"id_rsa", "id_ed25519", "th12.exe", "th12.cfg", "steam_appid.txt"}), f"Game/save/credential file: {name}")
-    require(not (suffix in {".dll", ".exe"} and "smoke" in lower[-1]), f"Smoke binary: {name}")
+    require(not (suffix in {".dll", ".exe"} and ("smoke" in lower[-1] or "-test" in lower[-1])), f"Diagnostic binary: {name}")
     if len(parts) == 1:
         require(name in ROOT_FILES, f"Unexpected root file: {name}")
     elif lower[0] == "dist":
@@ -280,7 +283,7 @@ def main():
     try:
         verify(archive, report)
         report["passed"] = True
-    except (InvalidPackage, OSError, ValueError, KeyError, TypeError, zipfile.BadZipFile, zlib.error, RuntimeError) as error:
+    except (InvalidPackage, OSError, ValueError, KeyError, TypeError, zipfile.BadZipFile, zlib.error, RuntimeError, subprocess.CalledProcessError) as error:
         report["error"] = str(error)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

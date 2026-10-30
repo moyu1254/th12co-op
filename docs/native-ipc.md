@@ -1,6 +1,6 @@
 # Native IPC version 1
 
-The local launcher/DLL ABI remains version **1**, cooperative rules are **3**, and network protocol is **3** (`T12L3` invitations). These version numbers have separate purposes. All three known executable profiles use this layout. The current behavior is defined by [the cooperative rules](cooperative-rules.md) and [engine integration](native-engine.md); executed tests belong in [verification/RESULTS.md](../verification/RESULTS.md).
+The local launcher/DLL ABI remains version **1**, cooperative rules are **4**, and network protocol is **4** (`T12L4` invitations). These version numbers have separate purposes. All three known executable profiles use this layout. The current behavior is defined by [the cooperative rules](cooperative-rules.md) and [engine integration](native-engine.md); executed tests belong in [verification/RESULTS.md](../verification/RESULTS.md).
 
 Both offline and online startup use a suspended process and early injection. IPC carries startup metadata, controls and state digests. There are no video/audio capture or transport mappings. Integers below are little-endian 32-bit values unless identified as floats.
 
@@ -37,7 +37,11 @@ The DLL creates the independent 64-byte `Local\TH12Coop_<pid>` mapping:
 | 48 / 52 | Native P1/P2 states |
 | 56 / 60 | Active P1/P2 shot counts |
 
-Managed offline gameplay uses bit 0 and masks `0xfb`; a heartbeat older than one second releases those controls. Ordinary menu input is still native physical input. Bit 1 can override raw P1 menu input only in the separate smoke build and has no override effect in the normal DLL. Without managed input, native P1 controls and the documented P2 keyboard bindings apply. Position/state fields can retain their last observation after actor teardown, so consumers must also inspect status. This telemetry has no frame-sequence publication guarantee and is not used for synchronization decisions.
+Managed offline gameplay uses bit 0 and masks `0xfb`; managed P1 menu/pause polling uses `0x1fb`. A heartbeat older than one second releases those controls. Keyboard and selected gamepad bindings are merged before publishing; native physical input does not bypass rebinding. Bit 1 can override raw P1 menu input only in the separate smoke build and has no override effect in the normal DLL. Without managed input, native P1 controls and the documented P2 keyboard bindings apply. Position/state fields can retain their last observation after actor teardown, so consumers must also inspect status. This telemetry has no frame-sequence publication guarantee and is not used for synchronization decisions.
+
+## Independent player selection
+
+Before injection the launcher optionally publishes a 16-byte `Local\TH12CoopPlayers_<pid>` mapping: magic `0x43323154`, version 1, P1 selection, P2 selection. Selection IDs 0–5 are Reimu A/B, Marisa A/B, Sanae A/B. The native DLL reads and validates it once. An absent mapping preserves the old in-game same-character selection for diagnostic callers; malformed mappings fail initialization. Protocol 4 first sends the guest selection as `[4, selection]` (`255` means the legacy menu path), then freezes both selections in the session manifest. The guest checks its own selection and acknowledges the complete manifest hash before either game starts. Selection and active bomb equipment are included in the native digest.
 
 Online actor controls come exclusively from committed network input; the 64-byte mapping remains telemetry. Its status 2 means an actor pair exists, not that both actors are currently alive or movable.
 

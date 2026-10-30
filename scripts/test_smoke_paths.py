@@ -62,7 +62,7 @@ class FolderTests(unittest.TestCase):
         process.assert_called_once_with(folder.resolve())
         modified = (folder / 'th12.cfg').read_bytes()
         self.assertNotEqual(modified, original)
-        self.assertEqual(modified[0x1d], 1)
+        self.assertEqual(modified[0x1d], original[0x1d])
         self.assertEqual(struct.unpack_from('<I', modified, 0x38)[0] & 0x100, 0)
 
     def test_external_test_prefix_is_rejected_before_write(self):

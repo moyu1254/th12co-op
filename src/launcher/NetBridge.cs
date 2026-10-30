@@ -6,13 +6,14 @@ internal readonly record struct GameDigest(uint Frame, uint Low, uint High, uint
 
 internal sealed class NetBridge : IDisposable
 {
-    internal const uint Magic = 0x4e323154, Version = 1, Size = 12544, Capacity = 256, RulesVersion = 3;
+    internal const uint Magic = 0x4e323154, Version = 1, Size = 12544, Capacity = 256, RulesVersion = 4;
     private readonly MemoryMappedFile mapping;
     private readonly MemoryMappedViewAccessor memory;
     private readonly System.Threading.Timer heartbeat;
     private readonly EventWaitHandle request;
     private readonly EventWaitHandle commit;
     private readonly object abortGate = new();
+    private readonly LocalInputReader? localInput;
     private int disposed;
     private uint lastCommitted;
     public uint RequestedFrame => memory.ReadUInt32(36);
@@ -23,8 +24,9 @@ internal sealed class NetBridge : IDisposable
     public uint[] Components() => Enumerable.Range(0, 6).Select(index => memory.ReadUInt32(96 + index * 4)).ToArray();
     public bool DeviceReady => memory.ReadUInt32(88) == 1;
 
-    public NetBridge(int pid, uint seed, bool testInstance, uint primaryThreadId = 0)
+    public NetBridge(int pid, uint seed, bool testInstance, uint primaryThreadId = 0, InputBindingProfile? input = null)
     {
+        if (input != null) localInput = new LocalInputReader(input, pid);
         mapping = MemoryMappedFile.CreateNew($"Local\\TH12CoopNet_{pid}", Size);
         memory = mapping.CreateViewAccessor(0, Size);
         request = new EventWaitHandle(false, EventResetMode.AutoReset, $"Local\\TH12CoopNetRequest_{pid}");
@@ -62,7 +64,7 @@ internal sealed class NetBridge : IDisposable
         Thread.MemoryBarrier();
         if (sequence != frame || memory.ReadUInt32(84) != sequence) throw new IOException("ゲーム入力のフレーム番号が一致しません。");
         if ((mask & ~0x1fbu) != 0) throw new IOException("ゲームから未対応の入力を受信しました。");
-        return mask;
+        return localInput?.Read() ?? mask;
     }
 
     public void Commit(uint frame, uint p1, uint p2)
