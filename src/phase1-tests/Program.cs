@@ -153,14 +153,52 @@ internal static class Program
                 await CancelWaitingHost(service);
                 Check(closes.Requests == 1, "Cancelling an unclaimed room must send one close request");
                 using var tests = new CancellationTokenSource(TimeSpan.FromMinutes(2));
-                await QuicIdentityTests.Run(tests.Token);
-                await UdpPathTests.Run(tests.Token);
+                await Task.WhenAll(DelayedHostOfferProcessing(service, tests.Token),
+                    QuicIdentityTests.Run(tests.Token), UdpPathTests.Run(tests.Token));
             }
             Console.WriteLine(games == null ? "PASS numbered HTTPS/ICE/QUIC loopback, confirmation and cleanup" :
                 "PASS numbered loopback game, lockstep, quiet operation and cleanup");
             return 0;
         }
         finally { await app.StopAsync(); }
+    }
+
+    private static async Task DelayedHostOfferProcessing(RendezvousClient service, CancellationToken token)
+    {
+        using var identity = RoomIdentity.Create();
+        var room = await service.Create(identity.Invite, token);
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        async Task Guest()
+        {
+            await using var transport = new NumberedTransport(service);
+            using var channel = await transport.Join(room.Number, _ => { }, stop.Token);
+            await channel.Send([61], stop.Token);
+            Check((await channel.Receive(stop.Token)).SequenceEqual(new byte[] { 62 }), "Late host reply");
+        }
+        var guest = Guest();
+        try
+        {
+            var offer = await service.WaitOffer(room, stop.Token);
+            // The old deadline started before the guest even gathered candidates.
+            // Let the host resume after it, then exercise both real transport handshakes.
+            var resume = Task.Delay(TimeSpan.FromSeconds(46), stop.Token);
+            if (await Task.WhenAny(guest, resume) == guest) await guest;
+            await resume;
+            await using var ice = await UdpIcePeer.GatherAsync(true, service.Origin, stop.Token);
+            await service.Answer(room, ice.Description, stop.Token);
+            var path = await ice.ConnectAsync(offer, stop.Token);
+            await using var quic = new IceQuicConnection();
+            using var channel = await quic.Accept(path, identity, stop.Token);
+            Check((await channel.Receive(stop.Token)).SequenceEqual(new byte[] { 61 }), "Late host admission");
+            await channel.Send([62], stop.Token);
+            await guest;
+            Console.WriteLine("PASS guest authenticated and exchanged data after a 46-second host delay");
+        }
+        finally
+        {
+            stop.Cancel();
+            await guest.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
     }
 
     private static async Task CancelWaitingHost(RendezvousClient service)

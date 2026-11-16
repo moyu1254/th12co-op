@@ -22,16 +22,17 @@ SchannelでTLS 1.3を使用するため、オンラインの対象はWindows 11�
 
 ゲストは取得した証明書pinと参加鍵を使い、ホストの QUIC/TLS 1.3 接続を認証する。両側のhelloで通信版・役割・接続方式を検証し、番号方式と手入力方式を混在させない。番号方式ではさらに、ゲストがランダムな256-bit nonceを生成し、pinとnonceのSHA-256コミットメントをTLS内で送る。ホストが128-bitのランダムなsession IDを返してからゲストがnonceを開示し、ホストがコミットメントと照合する。画面には別の用途ラベル・pin・session ID・nonceのSHA-256の先頭32 bitを、4桁ずつの16進数で表示する。pinに一致する証明書はTLSで検証済みで、照合値そのものは合流サーバーから受け取らない。
 
-ゲストが自分の候補を添えて招待を取得すると、番号は他の参加者には使えなくなる。ホストは参加通知を受けてから UDP ソケットを開き、候補を返す。ホストの応答を取得した時点でサーバー上の部屋情報を破棄する。ホストが応答前に中止した場合は所有者トークンで取り消す。
+ゲストが自分の候補を添えて招待を取得すると、番号は他の参加者には使えなくなる。ホストは所有者トークンで参加通知を受け、UDP ソケットを開いて候補を返す。ホストは応答を登録するまで同じ通知を再取得できる。ゲストは参加時に得た専用トークンで同じ応答を再取得できる。応答の保持は登録後90秒と元の部屋の期限の早い方まで。ホストが応答前に中止した場合は所有者トークンで取り消す。
 
 40秒以内に両者が別経路で照合し、双方が同じTLS接続上で承認して初めてmanifestの交換へ進む。「一致しない」を選ぶと同じTLS接続で相手にも拒否が届き、両側で照合を終了する。期限切れ・切断でもゲームを起動しない。信頼する相手と直接共有した長い招待を使う方式では、合流サーバーに参加鍵やpinを開示しない。
 
 ## 番号方式の UDP 経路（Phase 2）
 
 1. 両者はゲーム通信に使うソケットから、設定済みの合流ホスト（UDP 3478）へ STUN Binding 要求を送る。ローカルの公開アドレス、観測された外側アドレス／ポート、ホストで取得できた UPnP 転送が候補になる。各 IP ファミリー最大2候補。合流サーバーは HTTPS 接続で確認できた IP に限って相手に渡す。
-2. Keryx ICE の認証付き STUN チェックで双方向に UDP を送る。ホストが controlling、ゲストが controlled。両者が候補を持つ IPv6 に350 ms の先行時間を与え、IPv4 でも到達性を確認する。選定された候補ペアをゲーム通信に使う。[ICE (RFC 8445)](https://www.rfc-editor.org/rfc/rfc8445)
+2. Keryx ICE の認証付き STUN チェックで双方向に UDP を送る。ホストが controlling、ゲストが controlled。両者が候補を持つ IPv6 に350 ms の先行時間を与え、IPv4 でも到達性を確認する。チェック中に新しいポートが見つかった場合も、相手が HTTPS で確認した IP の範囲内で候補を作る。他の IP からの要求を破棄しても、正規の候補のチェックは続く。[ICE (RFC 8445)](https://www.rfc-editor.org/rfc/rfc8445)
 3. QUIC の TLS 1.3 でホスト証明書を pin し、双方向の順序付きストリーム1本で参加鍵・照合・manifest・lockstep レコードを運ぶ。再送と順序制御は QUIC が担当する。ALPN は th12coop/6。ゲーム入力は両者の照合を終えてから送る。[QUIC の TLS](https://www.rfc-editor.org/rfc/rfc9001)
-4. .NET の MsQuic は ICE の既存ソケットを引き取れないため、各 PC 内のループバックと選定済み ICE 経路の間で QUIC データグラムを渡す。これにより STUN、ホールパンチング、ゲーム中の送信元ポートが変わらない。受信待ちは64データグラムまでで、あふれた分の再送は QUIC が扱う。[.NET の QUIC](https://learn.microsoft.com/en-us/dotnet/fundamentals/networking/quic/quic-overview)
+4. .NET の MsQuic は ICE の既存ソケットを引き取れないため、各 PC 内のループバックと選定済み ICE 経路の間で QUIC データグラムを渡す。これにより STUN、ホールパンチング、ゲーム中の送信元ポートが変わらない。ICE は送信元の IP とポートが選定済みペアと一致するデータだけを QUIC に渡す。受信待ちは64データグラムまでで、あふれた分の再送は QUIC が扱う。[.NET の QUIC](https://learn.microsoft.com/en-us/dotnet/fundamentals/networking/quic/quic-overview)
+5. QUIC は10秒間隔の keep-alive で入力待ち中の接続を維持する。正常終了では最後のレコードを送ったあとストリームの送信を完了し、期限内に確認を待って接続を閉じる。ICE とループバック間の転送が失敗した場合は、処理中のレコード読み書きにもその原因を返す。
 
 IPv4 のホストはデフォルトゲートウェイへ、確保した UDP ポートの UPnP IGD 転送を要求する。リースは660秒。照合中・ゲーム中も転送を維持し、5分ごとに所有を確認して更新する。終了・失敗時は所有ラベル・内部 IP・ポートが一致したものを解除する。異常終了時はルーターのリース失効に依存する。ルーターへの照会と更新・削除は原子的ではない。実機での挙動は未検証。[IGD WANIPConnection](https://upnp.org/specs/gw/UPnP-gw-WANIPConnection-v1-Service.pdf)
 
@@ -41,7 +42,7 @@ IPv4 のホストはデフォルトゲートウェイへ、確保した UDP ポ�
 |---|---|---|
 | 手入力・認証前 | 同時8件、TLS＋参加認証4秒、認証済み待機1件 | OnlineSession.AcceptGuest |
 | 手入力・クライアント接続 | TCP＋TLS＋認証応答で10秒 | SecureChannel.Connect |
-| 番号方式 | 参加後の経路確立全体45秒、QUIC と参加認証10秒。証明書pin、役割、鍵を検証 | NumberedTransport、IceQuicConnection |
+| 番号方式 | ローカル候補収集15秒、参加後のホスト応答待ち90秒、ICE 接続12秒、QUIC と参加認証10秒。各段階に独立した期限を設け、利用者の中止は全段階に伝える | NumberedTransport、UdpIcePeer、IceQuicConnection |
 | 本文 | 1〜4096 bytes。範囲外は本文配列の確保前に拒否 | SecureChannel.Receive |
 | 通信期限 | 送信5秒、長さ＋本文の受信40秒。送信1担当・受信1担当 | SecureChannel |
 | 入力／digest | 20／44 bytes、役割・版・session・連続frame・入力bitを検証 | LockstepPeer.AcceptRecord |

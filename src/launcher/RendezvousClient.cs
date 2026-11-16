@@ -99,10 +99,20 @@ internal sealed class RendezvousClient : IDisposable
 
     private async Task<IceDescription> Receive<T>(string action, T credential, CancellationToken token)
     {
-        using var response = await Post(action, credential, HttpStatusCode.OK, token, wait: true);
-        var ice = await Read<IceDescription>(response, token);
-        if (!ice.IsValid(AllowLoopback)) throw InvalidResponse();
-        return ice;
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(token);
+        lifetime.CancelAfter(action == "offer" ? TimeSpan.FromMinutes(10) : TimeSpan.FromSeconds(90));
+        while (true)
+        {
+            using var response = await Post(action, credential, HttpStatusCode.OK, lifetime.Token);
+            if (response.StatusCode == HttpStatusCode.OK)
+            {
+                var ice = await Read<IceDescription>(response, lifetime.Token);
+                if (!ice.IsValid(AllowLoopback)) throw InvalidResponse();
+                return ice;
+            }
+            // Empty poll, or all wait slots occupied. Keep the original room and credentials.
+            await Task.Delay(response.StatusCode == HttpStatusCode.ServiceUnavailable ? 1000 : 250, lifetime.Token);
+        }
     }
 
     internal async Task Answer(Registration room, IceDescription answer, CancellationToken token)
@@ -141,15 +151,32 @@ internal sealed class RendezvousClient : IDisposable
     }
 
     private async Task<HttpResponseMessage> Post<T>(string action, T value, HttpStatusCode expected, CancellationToken token,
-        bool wait = false, HttpClient? client = null)
+        HttpClient? client = null)
     {
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
-        deadline.CancelAfter(wait ? TimeSpan.FromMinutes(10) + TimeSpan.FromSeconds(8) : TimeSpan.FromSeconds(8));
+        bool poll = action is "offer" or "receive";
+        int attempts = poll ? 4 : action == "answer" ? 2 : 1;
+        int seconds = action switch { "offer" => 25, "receive" or "answer" => 4, _ => 8 };
         HttpResponseMessage response;
-        try { response = await (client ?? http).PostAsJsonAsync($"v2/rooms/{action}", value, Json, deadline.Token); }
-        catch (Exception e) when (e is HttpRequestException || e is OperationCanceledException && !token.IsCancellationRequested)
-        { throw new IOException("合流サーバーに接続できませんでした。HTTPS の接続と設定を確認してください。"); }
-        if (response.StatusCode == expected) return response;
+        for (int attempt = 1; ; attempt++)
+        {
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+            deadline.CancelAfter(TimeSpan.FromSeconds(seconds));
+            try
+            {
+                response = await (client ?? http).PostAsJsonAsync($"v2/rooms/{action}", value, Json, deadline.Token);
+                break;
+            }
+            catch (Exception e) when (!token.IsCancellationRequested && e is (OperationCanceledException or HttpRequestException))
+            {
+                bool interrupted = e is OperationCanceledException or HttpRequestException
+                    { HttpRequestError: HttpRequestError.ConnectionError or HttpRequestError.ResponseEnded };
+                if (!interrupted || attempt == attempts)
+                    throw new IOException("合流サーバーに接続できませんでした。HTTPS の接続と設定を確認してください。", e);
+                await Task.Delay(250, token);
+            }
+        }
+        if (response.StatusCode == expected || poll && response.StatusCode is (HttpStatusCode.NoContent or HttpStatusCode.ServiceUnavailable))
+            return response;
         var status = response.StatusCode;
         response.Dispose();
         throw new IOException(status switch

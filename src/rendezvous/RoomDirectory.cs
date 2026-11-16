@@ -13,6 +13,7 @@ internal enum Operation { Create, Join, Close, Proof, Offer, Answer, Receive }
 internal sealed class RoomDirectory(TimeProvider clock)
 {
     internal static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(10);
+    internal static readonly TimeSpan AnswerRetention = TimeSpan.FromSeconds(90);
     private readonly object gate = new();
     private readonly Dictionary<string, Reservation> numbers = new();
     private readonly AdmissionWindow creates = new(4, 8, 12, 48);
@@ -20,21 +21,23 @@ internal sealed class RoomDirectory(TimeProvider clock)
     private readonly AdmissionWindow closes = new(12, 24, 36, 96);
 
     private readonly AdmissionWindow proofRequests = new(24, 48, 72, 384);
-    private readonly AdmissionWindow offerRequests = new(12, 24, 36, 96);
+    // Include every short poll of a full-length room in its source and global budget.
+    private readonly AdmissionWindow offerRequests = new(160, 320, 480, 1920);
     private readonly AdmissionWindow answerRequests = new(12, 24, 36, 96);
-    private readonly AdmissionWindow receiveRequests = new(12, 24, 36, 120);
+    private readonly AdmissionWindow receiveRequests = new(320, 640, 1280, 3200);
     private readonly Dictionary<string, (string Address, long At)> proofs = new();
 
     private sealed class Mailbox
     {
         internal IceDescription? Value;
         internal TaskCompletionSource<IceDescription?>? Waiter;
-        internal bool Taken;
 
         internal void Deliver(IceDescription value)
         {
-            if (Waiter == null) Value = value;
-            else { Taken = true; Waiter.TrySetResult(value); }
+            // Completing a poll is not a delivery receipt. Keep the immutable value
+            // until the next protocol step, or until its absolute retention deadline.
+            Value = value;
+            Waiter?.TrySetResult(value);
         }
     }
 
@@ -43,6 +46,7 @@ internal sealed class RoomDirectory(TimeProvider clock)
         internal string? Invite = invite;
         internal readonly byte[] Owner = owner;
         internal byte[]? Guest;
+        internal long? AnsweredAt;
         internal readonly Mailbox Offer = new(), Answer = new();
     }
     private sealed record Reservation(long AdmittedAt, Entry? Entry);
@@ -176,38 +180,45 @@ internal sealed class RoomDirectory(TimeProvider clock)
     {
         lock (gate)
         {
-            RemoveExpired(clock.GetTimestamp());
+            var now = clock.GetTimestamp();
+            RemoveExpired(now);
             if (!numbers.TryGetValue(number, out var room) || room.Entry is not { } entry ||
-                !CryptographicOperations.FixedTimeEquals(entry.Owner, owner) || !entry.Offer.Taken ||
-                entry.Answer.Value != null || !Verified(answer, source)) return false;
+                !CryptographicOperations.FixedTimeEquals(entry.Owner, owner) || !Verified(answer, source)) return false;
+            if (entry.Answer.Value is { } previous)
+                return previous.Ufrag == answer.Description.Ufrag && previous.Password == answer.Description.Password &&
+                       previous.Candidates.SequenceEqual(answer.Description.Candidates);
+            if (entry.Offer.Value == null) return false;
+            entry.Offer.Value = null; // Publishing the answer acknowledges the offer.
+            entry.AnsweredAt = now;
             entry.Answer.Deliver(answer.Description);
-            if (entry.Answer.Taken) Retire(number, room);
             return true;
         }
     }
 
-    internal async Task<IceDescription?> Wait(string number, byte[] token, bool host, CancellationToken cancellation)
+    internal readonly record struct Poll(bool Exists, IceDescription? Description);
+
+    internal async Task<Poll> Wait(string number, byte[] token, bool host, CancellationToken cancellation)
     {
         TaskCompletionSource<IceDescription?> waiter;
         Mailbox box;
         lock (gate)
         {
             RemoveExpired(clock.GetTimestamp());
-            if (!numbers.TryGetValue(number, out var room) || room.Entry is not { } entry) return null;
+            if (!numbers.TryGetValue(number, out var room) || room.Entry is not { } entry) return default;
             var expected = host ? entry.Owner : entry.Guest;
-            if (expected == null || !CryptographicOperations.FixedTimeEquals(expected, token)) return null;
+            if (expected == null || !CryptographicOperations.FixedTimeEquals(expected, token) ||
+                host && entry.AnsweredAt.HasValue) return default;
             box = host ? entry.Offer : entry.Answer;
-            if (box.Taken || box.Waiter != null) return null;
-            if (box.Value is { } value)
-            {
-                box.Value = null;
-                box.Taken = true;
-                if (!host) Retire(number, room);
-                return value;
-            }
+            if (box.Value is { } value) return new(true, value);
+            if (box.Waiter != null) return new(true, null);
             box.Waiter = waiter = new(TaskCreationOptions.RunContinuationsAsynchronously);
         }
-        try { return await waiter.Task.WaitAsync(cancellation); }
+        try
+        {
+            var value = await waiter.Task.WaitAsync(TimeSpan.FromSeconds(host ? 20 : 2), clock, cancellation);
+            return new(value != null, value);
+        }
+        catch (TimeoutException) { return new(true, null); }
         finally { lock (gate) { if (box.Waiter == waiter) box.Waiter = null; } }
     }
 
@@ -245,9 +256,13 @@ internal sealed class RoomDirectory(TimeProvider clock)
     {
         foreach (var (number, reservation) in numbers)
         {
-            if (clock.GetElapsedTime(reservation.AdmittedAt, now) < Lifetime) continue;
-            Retire(number, reservation);
-            numbers.Remove(number);
+            if (clock.GetElapsedTime(reservation.AdmittedAt, now) >= Lifetime)
+            {
+                Retire(number, reservation);
+                numbers.Remove(number);
+            }
+            else if (reservation.Entry?.AnsweredAt is { } at && clock.GetElapsedTime(at, now) >= AnswerRetention)
+                Retire(number, reservation);
         }
         foreach (var (proof, value) in proofs)
             if (clock.GetElapsedTime(value.At, now) >= Lifetime) proofs.Remove(proof);

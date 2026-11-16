@@ -18,6 +18,12 @@ internal sealed class IceQuicConnection : IAsyncDisposable
     private Task pumps = Task.CompletedTask;
     private IPEndPoint? quicEndpoint;
     private QuicConnection? connection;
+    private QuicStream? stream;
+    private IOException? pathFailure;
+    private readonly object closeGate = new();
+    private Task? closing;
+    private bool authenticated;
+    private int disposed;
 
     internal IceQuicConnection() => local.Bind(new IPEndPoint(IPAddress.Loopback, 0));
     private IPEndPoint LocalEndpoint => (IPEndPoint)local.LocalEndPoint!;
@@ -36,7 +42,7 @@ internal sealed class IceQuicConnection : IAsyncDisposable
                 {
                     DefaultStreamErrorCode = 1, DefaultCloseErrorCode = 1,
                     MaxInboundBidirectionalStreams = 1, MaxInboundUnidirectionalStreams = 0,
-                    IdleTimeout = TimeSpan.FromSeconds(45),
+                    IdleTimeout = TimeSpan.FromSeconds(45), KeepAliveInterval = TimeSpan.FromSeconds(10),
                     ServerAuthenticationOptions = new()
                     {
                         ApplicationProtocols = [Alpn], ServerCertificate = identity.Certificate,
@@ -48,10 +54,16 @@ internal sealed class IceQuicConnection : IAsyncDisposable
         quicEndpoint = listener.LocalEndPoint;
         StartPumps(path);
         using var handshake = HandshakeDeadline(token);
-        connection = await listener.AcceptConnectionAsync(handshake.Token);
-        var stream = await connection.AcceptInboundStreamAsync(handshake.Token);
-        try { return await SecureChannel.AuthenticateHost(stream, identity, true, handshake.Token); }
-        catch { await stream.DisposeAsync(); throw; }
+        try
+        {
+            connection = await listener.AcceptConnectionAsync(handshake.Token);
+            stream = await connection.AcceptInboundStreamAsync(handshake.Token);
+            var channel = await SecureChannel.AuthenticateHost(stream, identity, true, handshake.Token, FinishWrites, GetPathFailure);
+            authenticated = true;
+            return channel;
+        }
+        catch (Exception) when (!token.IsCancellationRequested && GetPathFailure() is { } failure) { throw failure; }
+        catch { stream?.Abort(QuicAbortDirection.Both, 1); throw; }
     }
 
     internal async Task<SecureChannel> Connect(IcePath path, string invite, CancellationToken token)
@@ -67,7 +79,7 @@ internal sealed class IceQuicConnection : IAsyncDisposable
                 RemoteEndPoint = LocalEndpoint, LocalEndPoint = new IPEndPoint(IPAddress.Loopback, 0),
                 DefaultStreamErrorCode = 1, DefaultCloseErrorCode = 1,
                 MaxInboundBidirectionalStreams = 0, MaxInboundUnidirectionalStreams = 0,
-                IdleTimeout = TimeSpan.FromSeconds(45),
+                IdleTimeout = TimeSpan.FromSeconds(45), KeepAliveInterval = TimeSpan.FromSeconds(10),
                 ClientAuthenticationOptions = new()
                 {
                     ApplicationProtocols = [Alpn], TargetHost = "th12coop.invalid",
@@ -78,10 +90,13 @@ internal sealed class IceQuicConnection : IAsyncDisposable
                 }
             }, handshake.Token);
             if (!connection.LocalEndPoint.Equals(Volatile.Read(ref quicEndpoint))) throw new AuthenticationException();
-            var stream = await connection.OpenOutboundStreamAsync(QuicStreamType.Bidirectional, handshake.Token);
-            try { return await SecureChannel.AuthenticateGuest(stream, pin, capability, true, handshake.Token); }
-            catch { await stream.DisposeAsync(); throw; }
+            stream = await connection.OpenOutboundStreamAsync(QuicStreamType.Bidirectional, handshake.Token);
+            var channel = await SecureChannel.AuthenticateGuest(stream, pin, capability, true, handshake.Token, FinishWrites, GetPathFailure);
+            authenticated = true;
+            return channel;
         }
+        catch (Exception) when (!token.IsCancellationRequested && GetPathFailure() is { } failure) { throw failure; }
+        catch { stream?.Abort(QuicAbortDirection.Both, 1); throw; }
         finally { CryptographicOperations.ZeroMemory(capability); }
     }
 
@@ -129,25 +144,76 @@ internal sealed class IceQuicConnection : IAsyncDisposable
         {
             var outbound = Outbound();
             var inbound = Inbound();
-            await Task.WhenAny(outbound, inbound).ConfigureAwait(false);
-            stopping.Cancel();
-            await Task.WhenAll(outbound, inbound).ConfigureAwait(false);
+            var ended = await Task.WhenAny(outbound, inbound).ConfigureAwait(false);
+            try { await ended.ConfigureAwait(false); }
+            catch (Exception cause) when (!token.IsCancellationRequested)
+            {
+                // Publish the cause before waking the handshake or a blocked record read.
+                Volatile.Write(ref pathFailure, new IOException("UDP 経路が閉じたため、相手との通信を終了しました。", cause));
+                stopping.Cancel();
+                Volatile.Read(ref stream)?.Abort(QuicAbortDirection.Both, 1);
+                await CloseConnection(1).ConfigureAwait(false);
+            }
+            finally
+            {
+                stopping.Cancel();
+                await Task.WhenAll(outbound, inbound).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            }
         }
         pumps = Run();
     }
 
+    private IOException? GetPathFailure() => Volatile.Read(ref pathFailure);
+
+    private void FinishWrites()
+    {
+        try { stream?.CompleteWrites(); }
+        catch (Exception e) when (e is IOException or ObjectDisposedException) { } // Already disconnected.
+    }
+
+    // The pump can fail while disposal is draining the stream. Only start one close.
+    private Task CloseConnection(long code)
+    {
+        lock (closeGate)
+            return connection == null ? Task.CompletedTask : closing ??= Close(connection, code);
+        static async Task Close(QuicConnection connection, long code)
+        {
+            using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            try { await connection.CloseAsync(code, limit.Token).ConfigureAwait(false); }
+            catch (Exception e) when (e is IOException or OperationCanceledException) { }
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref disposed, 1) != 0) return;
         try
         {
-            if (connection != null) await connection.DisposeAsync().ConfigureAwait(false);
+            long code = 1;
+            if (authenticated && stream != null && GetPathFailure() == null)
+            {
+                // WriteAsync only hands bytes to MsQuic. Leave both packet pumps running
+                // until the peer acknowledges our stream FIN, including the last record.
+                FinishWrites();
+                try
+                {
+                    await stream.WritesClosed.WaitAsync(TimeSpan.FromSeconds(3), stopping.Token).ConfigureAwait(false);
+                    code = 0;
+                }
+                catch (Exception e) when (e is IOException or TimeoutException or OperationCanceledException) { }
+            }
+            await CloseConnection(code).ConfigureAwait(false);
         }
         finally
         {
             stopping.Cancel();
             await pumps.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
-            local.Dispose();
-            stopping.Dispose();
+            try { if (connection != null) await connection.DisposeAsync().ConfigureAwait(false); }
+            finally
+            {
+                try { if (stream != null) await stream.DisposeAsync().ConfigureAwait(false); }
+                finally { local.Dispose(); stopping.Dispose(); }
+            }
         }
     }
 

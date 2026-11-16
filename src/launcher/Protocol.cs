@@ -70,13 +70,21 @@ internal sealed class SecureChannel : IDisposable
     internal const int MaximumPayload = 4096;
     internal const ushort ProtocolVersion = 6;
     private readonly Stream stream;
+    private readonly Action release;
+    private readonly Func<IOException?>? pathFailure;
     private readonly SemaphoreSlim writer = new(1, 1);
     private int disposed;
     public byte[] Session { get; }
     internal string? VerificationCode { get; }
 
-    private SecureChannel(Stream stream, byte[] session, string? verificationCode)
-    { this.stream = stream; Session = session; VerificationCode = verificationCode; }
+    private SecureChannel(Stream stream, byte[] session, string? verificationCode, Action release, Func<IOException?>? pathFailure)
+    { this.stream = stream; Session = session; VerificationCode = verificationCode; this.release = release; this.pathFailure = pathFailure; }
+
+    private static void CloseTcp(SslStream? tls, TcpClient client)
+    {
+        try { tls?.Dispose(); }
+        finally { client.Dispose(); }
+    }
 
     public static async Task<SecureChannel> Connect(string host, int port, string invite, CancellationToken token, bool numbered = false)
     {
@@ -98,11 +106,11 @@ internal sealed class SecureChannel : IDisposable
                 CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
                 EncryptionPolicy = EncryptionPolicy.RequireEncryption,
             }, deadline.Token);
-            return await AuthenticateGuest(tls, parsed.CertificateHash, parsed.Capability, numbered, deadline.Token);
+            return await AuthenticateGuest(tls, parsed.CertificateHash, parsed.Capability, numbered, deadline.Token, () => CloseTcp(tls, client));
         }
         catch (Exception error)
         {
-            tls?.Dispose(); client.Dispose();
+            CloseTcp(tls, client);
             if (error is OperationCanceledException && !token.IsCancellationRequested)
                 throw new TimeoutException("相手への接続が10秒以内に完了しませんでした。", error);
             throw;
@@ -112,10 +120,11 @@ internal sealed class SecureChannel : IDisposable
 
     public static async Task<SecureChannel> Accept(TcpClient client, RoomIdentity identity, CancellationToken token, bool numbered = false)
     {
-        client.NoDelay = true;
-        var tls = new SslStream(client.GetStream(), false);
+        SslStream? tls = null;
         try
         {
+            client.NoDelay = true;
+            tls = new SslStream(client.GetStream(), false);
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
             deadline.CancelAfter(TimeSpan.FromSeconds(4));
             await tls.AuthenticateAsServerAsync(new SslServerAuthenticationOptions
@@ -127,11 +136,11 @@ internal sealed class SecureChannel : IDisposable
                 CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
                 EncryptionPolicy = EncryptionPolicy.RequireEncryption,
             }, deadline.Token);
-            return await AuthenticateHost(tls, identity, numbered, deadline.Token);
+            return await AuthenticateHost(tls, identity, numbered, deadline.Token, () => CloseTcp(tls, client));
         }
         catch (Exception error)
         {
-            tls.Dispose(); client.Dispose();
+            CloseTcp(tls, client);
             if (error is OperationCanceledException && !token.IsCancellationRequested)
                 throw new TimeoutException("接続相手の認証が4秒以内に完了しませんでした。", error);
             throw;
@@ -140,7 +149,8 @@ internal sealed class SecureChannel : IDisposable
 
     // The transport supplies an ordered encrypted stream. The guest has already pinned
     // the host certificate. The caller owns the stream until authentication succeeds.
-    internal static async Task<SecureChannel> AuthenticateGuest(Stream stream, byte[] pin, byte[] capability, bool numbered, CancellationToken token)
+    internal static async Task<SecureChannel> AuthenticateGuest(Stream stream, byte[] pin, byte[] capability, bool numbered,
+        CancellationToken token, Action release, Func<IOException?>? pathFailure = null)
     {
         var hello = new byte[40];
         "T12L"u8.CopyTo(hello);
@@ -159,10 +169,11 @@ internal sealed class SecureChannel : IDisposable
         ValidateHello(acknowledgement, 1, numbered);
         var session = acknowledgement[8..24];
         if (numbered) await stream.WriteAsync(nonce, token);
-        return new SecureChannel(stream, session, numbered ? CompareCode(pin, session, nonce) : null);
+        return new SecureChannel(stream, session, numbered ? CompareCode(pin, session, nonce) : null, release, pathFailure);
     }
 
-    internal static async Task<SecureChannel> AuthenticateHost(Stream stream, RoomIdentity identity, bool numbered, CancellationToken token)
+    internal static async Task<SecureChannel> AuthenticateHost(Stream stream, RoomIdentity identity, bool numbered,
+        CancellationToken token, Action release, Func<IOException?>? pathFailure = null)
     {
         var hello = new byte[40];
         await stream.ReadExactlyAsync(hello, token);
@@ -193,7 +204,7 @@ internal sealed class SecureChannel : IDisposable
                 throw new AuthenticationException("相手の照合情報が一致しません。");
             code = CompareCode(pin, session, nonce);
         }
-        return new SecureChannel(stream, session, code);
+        return new SecureChannel(stream, session, code, release, pathFailure);
     }
 
     private static byte[] CommitNonce(byte[] pin, byte[] nonce) =>
@@ -213,6 +224,7 @@ internal sealed class SecureChannel : IDisposable
 
     public async Task Send(byte[] payload, CancellationToken token)
     {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
         if (payload.Length is < 1 or > MaximumPayload) throw new IOException("通信データの長さが不正です。");
         await writer.WaitAsync(token);
         try
@@ -224,6 +236,7 @@ internal sealed class SecureChannel : IDisposable
             payload.CopyTo(record, 4);
             await stream.WriteAsync(record, deadline.Token);
         }
+        catch (Exception) when (!token.IsCancellationRequested && pathFailure?.Invoke() is { } failure) { throw failure; }
         catch (OperationCanceledException error) when (!token.IsCancellationRequested)
         { throw new TimeoutException("相手へのデータ送信が5秒以内に完了しませんでした。", error); }
         finally { writer.Release(); }
@@ -231,6 +244,7 @@ internal sealed class SecureChannel : IDisposable
 
     public async Task<byte[]> Receive(CancellationToken token)
     {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         // Native resource loading is bounded at 30 seconds. Keep transport
         // alive through that work plus delivery/cleanup margin.
@@ -245,6 +259,7 @@ internal sealed class SecureChannel : IDisposable
             await stream.ReadExactlyAsync(payload, deadline.Token);
             return payload;
         }
+        catch (Exception) when (!token.IsCancellationRequested && pathFailure?.Invoke() is { } failure) { throw failure; }
         catch (OperationCanceledException error) when (!token.IsCancellationRequested)
         { throw new TimeoutException("相手からのデータ受信が40秒以内に完了しませんでした。接続を確認してください。", error); }
     }
@@ -252,7 +267,7 @@ internal sealed class SecureChannel : IDisposable
     public void Dispose()
     {
         if (Interlocked.Exchange(ref disposed, 1) != 0) return;
-        stream.Dispose();
+        release();
         // Ongoing writer cancellation owns its release; disposing this gate here
         // would race that release and hide the actual transport failure.
     }

@@ -21,21 +21,18 @@ internal sealed class NumberedTransport(RendezvousClient service,
         {
             roomIssued(room.Number);
             status("ゲストの参加を待っています");
-            using var waiting = CancellationTokenSource.CreateLinkedTokenSource(token);
-            waiting.CancelAfter(TimeSpan.FromMinutes(10));
             IceDescription offer;
-            try { offer = await service.WaitOffer(room, waiting.Token); }
+            try { offer = await service.WaitOffer(room, token); }
             catch (OperationCanceledException) when (!token.IsCancellationRequested)
             { throw new TimeoutException("部屋番号が期限切れになりました。新しい部屋を作成してください。"); }
 
-            using var deadline = ConnectionDeadline(token);
             status("UDP の接続経路を確認しています");
-            ice = await UdpIcePeer.GatherAsync(true, service.Origin, deadline.Token, mapPort: openMapping);
-            await service.Answer(room, ice.Description, deadline.Token);
+            ice = await UdpIcePeer.GatherAsync(true, service.Origin, token, mapPort: openMapping);
+            await service.Answer(room, ice.Description, token);
             delivered = true;
-            var path = await ice.ConnectAsync(offer, deadline.Token);
+            var path = await ice.ConnectAsync(offer, token);
             quic = new();
-            return await quic.Accept(path, identity, deadline.Token);
+            return await quic.Accept(path, identity, token);
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         { throw NoPath(); }
@@ -54,25 +51,22 @@ internal sealed class NumberedTransport(RendezvousClient service,
     {
         if (!QuicConnection.IsSupported) throw IceQuicConnection.Unavailable();
         status("UDP の接続経路を確認しています");
-        using var deadline = ConnectionDeadline(token);
         try
         {
-            ice = await UdpIcePeer.GatherAsync(false, service.Origin, deadline.Token);
-            var claim = await service.Join(number, ice.Description, deadline.Token);
-            var answer = await service.WaitAnswer(number, claim.GuestToken, deadline.Token);
-            var path = await ice.ConnectAsync(answer, deadline.Token);
+            ice = await UdpIcePeer.GatherAsync(false, service.Origin, token);
+            var claim = await service.Join(number, ice.Description, token);
+            IceDescription answer;
+            // The host may still be gathering and proving its addresses. Waiting
+            // for its answer has a separate deadline from our ICE/QUIC handshake.
+            try { answer = await service.WaitAnswer(number, claim.GuestToken, token); }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
+            { throw new TimeoutException("ホストの UDP 接続候補が90秒以内に届きませんでした。"); }
+            var path = await ice.ConnectAsync(answer, token);
             quic = new();
-            return await quic.Connect(path, claim.Invite, deadline.Token);
+            return await quic.Connect(path, claim.Invite, token);
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         { throw NoPath(); }
-    }
-
-    private static CancellationTokenSource ConnectionDeadline(CancellationToken token)
-    {
-        var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
-        deadline.CancelAfter(TimeSpan.FromSeconds(45));
-        return deadline;
     }
 
     private static TimeoutException NoPath() => new("UDP で接続できませんでした。新しい部屋番号で再試行するか、LAN・VPN で手入力の直接接続を使用してください。");

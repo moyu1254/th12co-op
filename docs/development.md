@@ -1,6 +1,6 @@
 # 開発・リリース
 
-開発先は [`moyu1254/th12co-op`](https://github.com/moyu1254/th12co-op) です。ソースは [MIT License](../LICENSE) で提供し、原作とランタイムの権利は [NOTICE](../NOTICE.md) に記載します。原作の実行ファイル・データ・スコア、作業用のゲームコピー、ビルド出力、秘密情報はコミットしません。配布ZIPはGitHub Releasesへ添付します。
+開発先は [`moyu1254/th12co-op`](https://github.com/moyu1254/th12co-op) です。本プロジェクトが作成したソースは [MIT License](../LICENSE) で提供します。同梱する Keryx のソースコードとランタイムのライセンス、原作の権利は [NOTICE](../NOTICE.md) に記載します。原作の実行ファイル・データ・スコア、作業用のゲームコピー、ビルド出力、秘密情報はコミットしません。配布ZIPはGitHub Releasesへ添付します。
 
 ## ビルドと検証
 

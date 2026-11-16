@@ -19,16 +19,10 @@ internal sealed class UdpIcePeer : IAsyncDisposable
     {
         this.agent = agent;
         this.loopback = loopback;
-        agent.OnRemoteCandidate += (_, candidate) =>
-        {
-            // A peer-reflexive address is learned only from a valid authenticated check. Its
-            // port may change behind NAT. Restrict it to a proven peer IP, and cap these
-            // dynamic pairs too (the library's MaxRemoteCandidates caps signaled ones).
-            if (candidate.Port < 1024 || !IceDescription.AddressAllowed(candidate.Address, loopback) ||
-                agent.RemoteCandidates.Count > 2 * IceDescription.MaxCandidates ||
-                Volatile.Read(ref allowedPeerAddresses) is { } allowed && !allowed.Contains(candidate.Address))
-                agent.Close();
-        };
+        // A NAT may change the port on a proven IP. Before a verified offer arrives, an
+        // inbound check has no approved source and ICE can retry it after signaling.
+        agent.AcceptRemoteCheck = endpoint => endpoint.Port >= 1024 &&
+            Volatile.Read(ref allowedPeerAddresses) is { } allowed && allowed.Contains(endpoint.Address);
     }
 
     internal static async Task<UdpIcePeer> GatherAsync(bool host, Uri rendezvousOrigin, CancellationToken token,
@@ -45,7 +39,9 @@ internal sealed class UdpIcePeer : IAsyncDisposable
             BindAddress = local ? (rendezvousOrigin.HostNameType == UriHostNameType.IPv6
                 ? IPAddress.IPv6Loopback : IPAddress.Loopback) : null,
             ResolveMdnsCandidates = false,
+            StrictInboundSourceValidation = true,
             MaxRemoteCandidates = 2 * IceDescription.MaxCandidates,
+            MaxPeerReflexiveCandidates = IceDescription.MaxCandidates,
             ConnectivityTimeout = TimeSpan.FromSeconds(10),
             StunClientOptions = new() { MaxTransmissions = 3, FinalWaitMultiplier = 2 }
         };
@@ -99,9 +95,8 @@ internal sealed class UdpIcePeer : IAsyncDisposable
         {
             var endpoints = remote.Candidates.Select(c => new IPEndPoint(IPAddress.Parse(c.Address), c.Port)).ToArray();
             var allowed = endpoints.Select(ep => ep.Address).Distinct().ToArray();
-            Volatile.Write(ref allowedPeerAddresses, allowed);
-            if (agent.RemoteCandidates.Any(c => !allowed.Contains(c.Address))) throw new IOException("相手の UDP 候補を確認できません。");
             agent.SetRemoteCredentials(remote.Ufrag, remote.Password);
+            Volatile.Write(ref allowedPeerAddresses, allowed);
             var ipv6 = endpoints.Where(e => e.AddressFamily == AddressFamily.InterNetworkV6).ToArray();
             bool tryV6 = ipv6.Length > 0 && agent.LocalCandidates.Any(c => c.Address.AddressFamily == AddressFamily.InterNetworkV6);
             if (tryV6)
@@ -119,7 +114,7 @@ internal sealed class UdpIcePeer : IAsyncDisposable
                 await Task.Delay(25, deadline.Token);
             }
             var selected = agent.SelectedPair;
-            if (selected is not { Nominated: true } || !allowed.Contains(selected.Remote.Address))
+            if (selected is not { Nominated: true } || selected.Remote.Port < 1024 || !allowed.Contains(selected.Remote.Address))
                 throw new IOException("相手の UDP 経路を確認できません。");
             return path = new IcePath(agent, selected.RemoteEndPoint);
         }
@@ -170,16 +165,16 @@ internal sealed class IcePath
     {
         this.agent = agent;
         RemoteEndPoint = remote;
-        agent.Transport.OnReceived += Receive;
+        agent.OnDatagram += Receive;
         agent.OnStateChanged += StateChanged;
     }
 
     private bool IsNominated => agent.SelectedPair is { Nominated: true } pair &&
         pair.RemoteEndPoint.Equals(RemoteEndPoint) && agent.State == IceAgentState.Connected;
 
-    private void Receive(ReadOnlySpan<byte> datagram)
+    private void Receive(IPEndPoint from, ReadOnlySpan<byte> datagram)
     {
-        if (datagram.Length is > 0 && datagram.Length <= MaxDatagramSize && IsNominated)
+        if (from.Equals(RemoteEndPoint) && datagram.Length is > 0 && datagram.Length <= MaxDatagramSize && IsNominated)
             incoming.Writer.TryWrite(datagram.ToArray());
     }
 
@@ -205,7 +200,7 @@ internal sealed class IcePath
 
     internal void Close()
     {
-        agent.Transport.OnReceived -= Receive;
+        agent.OnDatagram -= Receive;
         agent.OnStateChanged -= StateChanged;
         incoming.Writer.TryComplete();
     }

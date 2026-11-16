@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Version>0.4.0-th12.1</Version>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Proxeno.Keryx.Core" Version="[0.4.0]" />
+    <PackageReference Include="Proxeno.Keryx.Stun" Version="[0.4.0]" />
+    <PackageReference Include="Proxeno.Keryx.Turn" Version="[0.4.0]" />
+  </ItemGroup>
+</Project>

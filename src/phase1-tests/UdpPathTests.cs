@@ -12,6 +12,7 @@ internal static class UdpPathTests
     internal static async Task Run(CancellationToken token)
     {
         await TranslatedPath(token);
+        await FilteredPeerReflexiveChecks(token);
         await WrongIcePasswords(token);
         if (Socket.OSSupportsIPv6)
         {
@@ -123,6 +124,90 @@ internal static class UdpPathTests
             try { await forwarding; } catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         }
         Console.WriteLine("PASS loopback STUN translated both ports, negotiated the reflected pair, and carried a 4096-byte QUIC record after dropping the first Initial");
+    }
+
+    private static async Task FilteredPeerReflexiveChecks(CancellationToken token)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        var ct = timeout.Token;
+        // Let non-STUN data through the underlying socket filter in this fixture to
+        // exercise IcePath's own source check even when the library hands it a packet.
+        var hostAgent = new IceAgent(new IceAgentOptions
+        {
+            BindAddress = IPAddress.Loopback, StrictInboundSourceValidation = false,
+            MaxRemoteCandidates = 4, MaxPeerReflexiveCandidates = 1
+        });
+        await using var host = new UdpIcePeer(hostAgent, loopback: true);
+        await hostAgent.StartGatheringAsync(ct);
+        var hostSocket = hostAgent.LocalEndPoint!;
+        var hostOffer = new IceDescription(hostAgent.LocalUfrag, hostAgent.LocalPassword,
+            [new(hostSocket.Address.ToString(), hostSocket.Port)]);
+        await using var guest = await UdpIcePeer.GatherAsync(false, Loopback, ct);
+
+        // A second interface for the same guest sends ordinary ICE checks from a
+        // loopback address absent from its verified offer, before and after signaling.
+        IceAgent GuestInterface(IPAddress address) => new(new IceAgentOptions
+        {
+            Role = IceRole.Controlled, BindAddress = address,
+            LocalUfrag = guest.Description.Ufrag, LocalPassword = guest.Description.Password
+        });
+        using var alternate = GuestInterface(IPAddress.Parse("127.0.0.2"));
+        using var extraPort = GuestInterface(IPAddress.Loopback);
+        await Task.WhenAll(alternate.StartGatheringAsync(ct), extraPort.StartGatheringAsync(ct));
+        var alternateSocket = alternate.LocalEndPoint!;
+        var beforeOffer = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var afterOffer = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var extraCheck = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var accept = hostAgent.AcceptRemoteCheck!;
+        hostAgent.AcceptRemoteCheck = source =>
+        {
+            var admitted = accept(source);
+            if (source.Equals(extraPort.LocalEndPoint) && admitted) extraCheck.TrySetResult();
+            if (source.Equals(alternateSocket) && !admitted)
+            {
+                // The proven loopback endpoint becomes admissible only after ConnectAsync publishes it.
+                (accept(hostSocket) ? afterOffer : beforeOffer).TrySetResult();
+            }
+            return admitted;
+        };
+        void StartChecks(IceAgent sender)
+        {
+            sender.SetRemoteCredentials(hostOffer.Ufrag, hostOffer.Password);
+            sender.AddRemoteCandidate(hostAgent.LocalCandidates.Single());
+        }
+        StartChecks(alternate);
+        await beforeOffer.Task.WaitAsync(ct);
+        Check(hostAgent.RemoteCandidates.Count == 0, "Learned a remote candidate before signaling");
+
+        // This listener stands in for an earlier NAT mapping. The same proven IP
+        // checks back from its current port, which must still be eligible for nomination.
+        using var oldMapping = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+        var oldSocket = (IPEndPoint)oldMapping.Client.LocalEndPoint!;
+        var guestOffer = guest.Description with { Candidates = [new(oldSocket.Address.ToString(), oldSocket.Port)] };
+        var hostConnection = host.ConnectAsync(guestOffer, ct);
+        await afterOffer.Task.WaitAsync(ct);
+        var paths = await Task.WhenAll(hostConnection, guest.ConnectAsync(hostOffer, ct));
+        Check(hostAgent.RemoteCandidates.All(c => !c.EndPoint.Equals(alternateSocket)) &&
+            hostAgent.CheckList.All(p => !p.RemoteEndPoint.Equals(alternateSocket)), "Unapproved source entered the checklist");
+        Check(hostAgent.SelectedPair?.Remote.Type == IceCandidateType.PeerReflexive &&
+            paths[0].RemoteEndPoint.Port == guest.Description.Candidates.Single().Port, "Expected the peer's current NAT port");
+
+        // The only learned slot is occupied by the current port. Another port on the
+        // proven IP must leave both the candidate list and established connection intact.
+        StartChecks(extraPort);
+        await extraCheck.Task.WaitAsync(ct);
+        var offPairDelivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        hostAgent.OnDatagram += (from, _) => { if (from.Equals(oldSocket)) offPairDelivered.TrySetResult(); };
+        await oldMapping.SendAsync(new byte[] { 0xf1, 1 }, hostSocket, ct);
+        await offPairDelivered.Task.WaitAsync(ct);
+        await paths[1].SendAsync(new byte[] { 0xf1, 2 }, ct);
+        var buffer = new byte[32];
+        Check(await paths[0].ReceiveAsync(buffer, ct) == 2 && buffer[1] == 2,
+            "Data from the other port reached the nominated application path");
+        Check(hostAgent.RemoteCandidates.Count == 2 && hostAgent.CheckList.All(p => !p.RemoteEndPoint.Equals(extraPort.LocalEndPoint)),
+            "Exceeded the peer-reflexive cap");
+        Console.WriteLine("PASS early and unproved loopback sources were ignored, NAT port changes respected the cap, and only nominated data reached the channel");
     }
 
     private static async Task WrongIcePasswords(CancellationToken token)

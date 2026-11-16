@@ -10,6 +10,8 @@ namespace TH12Coop.Rendezvous;
 
 internal static class Program
 {
+    private const int ConnectionLimit = 64;
+    private const int PollLimit = 48;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         MaxDepth = 6,
@@ -53,8 +55,9 @@ internal static class Program
     }
 
     internal static WebApplication Build(X509Certificate2 leaf, X509Certificate2Collection chain,
-        IPAddress? listenAddress, int port, TimeProvider clock)
+        IPAddress? listenAddress, int port, TimeProvider clock, int pollLimit = PollLimit)
     {
+        if (pollLimit is < 1 or > PollLimit) throw new ArgumentOutOfRangeException(nameof(pollLimit));
         // Configure only this socket. In particular, environment settings must not enable HTTP,
         // forwarded headers, request logging or the developer exception page.
         var builder = WebApplication.CreateEmptyBuilder(new() { EnvironmentName = Environments.Production });
@@ -62,7 +65,7 @@ internal static class Program
         builder.WebHost.UseKestrelCore().ConfigureKestrel(kestrel =>
         {
             kestrel.AddServerHeader = false;
-            kestrel.Limits.MaxConcurrentConnections = 64;
+            kestrel.Limits.MaxConcurrentConnections = ConnectionLimit;
             kestrel.Limits.MaxRequestBodySize = 4096;
             kestrel.Limits.MaxRequestLineSize = 1024;
             kestrel.Limits.MaxRequestHeadersTotalSize = 4096;
@@ -84,13 +87,14 @@ internal static class Program
         });
         var app = builder.Build();
         var directory = new RoomDirectory(clock);
+        var polls = new SemaphoreSlim(pollLimit, pollLimit);
         var timer = clock.CreateTimer(_ => directory.RemoveExpired(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
         app.Lifetime.ApplicationStopped.Register(timer.Dispose);
-        app.Run(context => Dispatch(context, directory));
+        app.Run(context => Dispatch(context, directory, polls));
         return app;
     }
 
-    private static async Task Dispatch(HttpContext context, RoomDirectory directory)
+    private static async Task Dispatch(HttpContext context, RoomDirectory directory, SemaphoreSlim polls)
     {
         var request = context.Request;
         var response = context.Response;
@@ -109,6 +113,7 @@ internal static class Program
             _ => null
         };
         if (op == null || context.Connection.RemoteIpAddress is not { } source) { response.StatusCode = 404; return; }
+        if (op is Operation.Offer or Operation.Receive) response.Headers.Connection = "close";
         if (!request.HasJsonContentType()) { response.StatusCode = 415; return; }
         if (!directory.Admit(op.Value, source, out var admittedAt))
         { response.StatusCode = StatusCodes.Status429TooManyRequests; return; }
@@ -155,14 +160,18 @@ internal static class Program
                         (number, key) = (guest.Number, guest.GuestToken);
                     }
                     if (!RoomDirectory.ValidNumber(number) || !RoomDirectory.ValidToken(key)) break;
-                    // A single authenticated waiter per role. Expiry/close completes the task.
-                    var description = await directory.Wait(number, Convert.FromHexString(key), host, context.RequestAborted);
-                    if (description == null) { response.StatusCode = 404; return; }
-                    using (var write = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted))
+                    // Never queue a request for a poll slot: that would still hold a Kestrel connection.
+                    if (!polls.Wait(0)) { response.StatusCode = 503; return; }
+                    try
                     {
+                        var poll = await directory.Wait(number, Convert.FromHexString(key), host, context.RequestAborted);
+                        if (!poll.Exists) { response.StatusCode = 404; return; }
+                        if (poll.Description == null) { response.StatusCode = 204; return; }
+                        using var write = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
                         write.CancelAfter(TimeSpan.FromSeconds(5));
-                        await response.WriteAsJsonAsync(description, Json, write.Token);
+                        await response.WriteAsJsonAsync(poll.Description, Json, write.Token);
                     }
+                    finally { polls.Release(); }
                     return;
                 case Operation.Answer:
                     var answer = await JsonSerializer.DeserializeAsync<Answer>(request.Body, Json, deadline.Token);

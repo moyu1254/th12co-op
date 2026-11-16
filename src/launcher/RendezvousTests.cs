@@ -11,11 +11,14 @@ internal static partial class SelfTests
 {
     private sealed class RoomReply(Func<HttpResponseMessage> respond) : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
             Expect(request.RequestUri?.AbsolutePath == "/v2/rooms/receive" && request.Method == HttpMethod.Post,
                 "fixed rendezvous endpoint");
-            return Task.FromResult(respond());
+            var credential = await request.Content!.ReadFromJsonAsync<Dictionary<string, string>>(token);
+            Expect(credential?.GetValueOrDefault("number") == "000123" &&
+                credential.GetValueOrDefault("guestToken") == new string('A', 64), "guest credential on every poll");
+            return respond();
         }
     }
 
@@ -47,6 +50,17 @@ internal static partial class SelfTests
         await RejectReply(() => new(HttpStatusCode.OK) { Content = new StringContent(new string('x', 4097)) });
         using (var service = new RendezvousClient("https://localhost", new RoomReply(() => JsonReply("127.0.0.1", 53012))))
             Expect((await service.WaitAnswer("000123", new string('A', 64), token)).Candidates.Single().Port == 53012, "explicit loopback fixture and remapped UDP port");
+        int polls = 0;
+        using (var service = new RendezvousClient("https://localhost", new RoomReply(() => ++polls switch
+        {
+            1 => new(HttpStatusCode.NoContent),
+            2 => throw new HttpRequestException(HttpRequestError.ResponseEnded, "Interrupted response"),
+            3 => new(HttpStatusCode.ServiceUnavailable),
+            4 => JsonReply("127.0.0.1", 53012),
+            _ => throw new InvalidOperationException("Unexpected poll")
+        })))
+            Expect((await service.WaitAnswer("000123", new string('A', 64), token)).Candidates.Single().Port == 53012 &&
+                polls == 4, "same authenticated read survives empty, interrupted and saturated polls");
         passed.Add("ICE signaling restricts HTTPS origin, response size, ICE credentials and numeric public UDP candidates");
 
         using var listener = new TcpListener(IPAddress.Loopback, 0);
