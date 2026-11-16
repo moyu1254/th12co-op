@@ -2,15 +2,16 @@ using System.Net.WebSockets;
 
 namespace TH12Coop.Rendezvous;
 
-internal sealed record RelayLimits(int Pairs, long Bytes, TimeSpan Wait, TimeSpan Lifetime)
+internal sealed record RelayLimits(int Pairs, long Bytes, TimeSpan Wait, TimeSpan Lifetime, TimeSpan Idle)
 {
     internal static readonly RelayLimits Default = new(8, 64L * 1024 * 1024,
-        TimeSpan.FromSeconds(35), TimeSpan.FromHours(2));
+        TimeSpan.FromSeconds(35), TimeSpan.FromHours(2), TimeSpan.FromSeconds(60));
 
     internal void Validate()
     {
         if (Pairs < 1 || Pairs > Default.Pairs || Bytes < 1 || Bytes > Default.Bytes ||
-            Wait <= TimeSpan.Zero || Wait > Default.Wait || Lifetime <= TimeSpan.Zero || Lifetime > Default.Lifetime)
+            Wait <= TimeSpan.Zero || Wait > Default.Wait || Lifetime <= TimeSpan.Zero || Lifetime > Default.Lifetime ||
+            Idle <= TimeSpan.Zero || Idle > Default.Idle)
             throw new ArgumentOutOfRangeException(nameof(RelayLimits));
     }
 }
@@ -26,6 +27,7 @@ internal sealed class RelayPair(bool firstHost, RelayLimits limits, TimeProvider
     private readonly TaskCompletionSource closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly WebSocket?[] sockets = new WebSocket?[2];
     private bool paired, finished;
+    internal bool IsPaired { get { lock (gate) return paired; } }
     private int holders = 1, closeCount;
     private long transferred;
 
@@ -81,7 +83,7 @@ internal sealed class RelayPair(bool firstHost, RelayLimits limits, TimeProvider
             // Once upgraded, read disconnects from the socket itself. A request-abort
             // notification can race the final ciphertext and close frame already on it.
             using var live = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token, stopping);
-            await CopyMessages(socket, remote, live.Token);
+            await CopyMessages(socket, remote, live);
             // Each direction has one writer. Forward its Close after its last data;
             // the other writer can finish sending to our still-readable peer. Both
             // upgraded requests must stay alive through the reverse close. Allow
@@ -116,11 +118,15 @@ internal sealed class RelayPair(bool firstHost, RelayLimits limits, TimeProvider
         }
     }
 
-    private async Task CopyMessages(WebSocket source, WebSocket destination, CancellationToken token)
+    private async Task CopyMessages(WebSocket source, WebSocket destination, CancellationTokenSource live)
     {
         var messages = new RelayMessages();
+        var token = live.Token;
         while (true)
         {
+            // Only a complete message forwarded by this direction renews its idle
+            // window. The other direction and the absolute pair TTL have independent timers.
+            live.CancelAfter(limits.Idle);
             var payload = await messages.Read(source, token);
             if (payload.IsEmpty) return;
             if (Interlocked.Add(ref transferred, payload.Length) > limits.Bytes) throw new InvalidDataException();

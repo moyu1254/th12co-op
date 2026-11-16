@@ -121,7 +121,13 @@ internal static partial class SelfTests
                 ExpectThrows<IOException>(() => peer.AcceptRecord(Record(0x10, 6, 20)));
                 var wrongEpoch = Record(0x13, 0); wrongEpoch[4] ^= 1;
                 ExpectThrows<IOException>(() => peer.AcceptRecord(wrongEpoch));
-                passed.Add("Wrong role, wrong session, duplicate/skipped frame and unknown input bit rejected");
+                var goodbye = Record(0x14, 0, 20);
+                try { peer.AcceptRecord(goodbye); throw new InvalidOperationException("Accepted an invalid goodbye"); }
+                catch (IOException error) when (error is not PeerSessionEndedException) { }
+                BinaryPrimitives.WriteUInt32LittleEndian(goodbye.AsSpan(16), 1);
+                try { peer.AcceptRecord(goodbye); throw new InvalidOperationException("Ignored the peer's goodbye"); }
+                catch (PeerSessionEndedException end) when (end.Reason == 1) { }
+                passed.Add("Invalid role, session, frame, input and goodbye rejected; valid peer goodbye identified");
 
                 var digestPeer = new LockstepPeer(client, manifest, 1);
                 digestPeer.AcceptRecord(Record(0x12, 0));

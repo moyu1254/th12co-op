@@ -37,10 +37,7 @@ internal sealed class NumberedTransport(RendezvousClient service,
         }
         catch
         {
-            // The host will not be returning a channel. Revoke both the signaling
-            // credentials and any still-waiting relay, including after an answer.
-            try { await service.Close(room); }
-            catch (IOException) { status("部屋を取り消せませんでした。部屋は期限が来ると自動で閉じます。"); }
+            await service.CancelSetup(room.Number, room.OwnerToken, host: true, status);
             throw;
         }
     }
@@ -50,13 +47,21 @@ internal sealed class NumberedTransport(RendezvousClient service,
         status("UDP の接続経路を確認しています");
         await Gather(false, token);
         var claim = await service.Join(number, ice?.Description ?? IceDescription.NoDirect, token);
-        IceDescription answer;
-        try { answer = await service.WaitAnswer(number, claim.GuestToken, token); }
-        catch (OperationCanceledException) when (!token.IsCancellationRequested)
-        { throw new TimeoutException("ホストの接続候補が90秒以内に届きませんでした。"); }
-        return await Connect(answer, (q, path) => q.Connect(path, claim.Invite, token),
-            ready => service.AgreeDirect(number, claim.GuestToken, false, ready, token),
-            () => service.ConnectRelay(number, claim, token), status, token);
+        try
+        {
+            IceDescription answer;
+            try { answer = await service.WaitAnswer(number, claim.GuestToken, token); }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
+            { throw new TimeoutException("ホストの接続候補が90秒以内に届きませんでした。"); }
+            return await Connect(answer, (q, path) => q.Connect(path, claim.Invite, token),
+                ready => service.AgreeDirect(number, claim.GuestToken, false, ready, token),
+                () => service.ConnectRelay(number, claim, token), status, token);
+        }
+        catch
+        {
+            await service.CancelSetup(number, claim.GuestToken, host: false, status);
+            throw;
+        }
     }
 
     private async Task Gather(bool host, CancellationToken token)

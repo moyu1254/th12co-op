@@ -34,8 +34,7 @@ internal static class ServerTests
         DelayedRegistration(invite);
         await Signaling(invite);
         await LateRoomClaim(invite);
-        await RelaySourceCapacity(invite);
-        Console.WriteLine("PASS late join and answer keep bounded private deadlines; each relay source shares concurrent pair limits across roles");
+        Console.WriteLine("PASS late join and answer keep bounded private deadlines");
         RouteAgreement(invite);
         Console.WriteLine("PASS 48 reservations per admission window, expiry from admission, IPv4/IPv6 prefix budgets and independent global limits");
         await PollBudgets(invite, host: true);
@@ -65,14 +64,14 @@ internal static class ServerTests
         var answeredAt = clock.Now;
         Check(rooms.Answer(room.Number, room.OwnerToken, ice, source), "publish near expiry");
         clock.Now += TimeSpan.FromSeconds(12).Ticks;
-        var waiting = rooms.ReserveRelay(room.Number, room.OwnerToken, true, source);
+        var waiting = rooms.ReserveRelay(room.Number, room.OwnerToken, true);
         Check(waiting.Status == HttpStatusCode.OK, "relay wait before public expiry");
         clock.Now = RoomDirectory.Lifetime.Ticks;
         rooms.RemoveExpired();
         Check(rooms.Join(unused.Number, ice, source) == null && rooms.Join(room.Number, ice, source) == null, "public claim expired");
         Check((await rooms.Wait(room.Number, guest, false, source, default)).Description?.IsNoDirect == true &&
               rooms.Answer(lateAnswer.Number, lateAnswer.OwnerToken, ice, source), "authenticated retrieval and answer after public expiry");
-        var paired = rooms.ReserveRelay(room.Number, guest, false, source);
+        var paired = rooms.ReserveRelay(room.Number, guest, false);
         Check(paired.Status == HttpStatusCode.OK && paired.Pair == waiting.Pair, "opposite roles can pair across public expiry");
         await ReleaseTestRole(paired.Pair!, true);
         await ReleaseTestRole(paired.Pair!, false);
@@ -87,64 +86,6 @@ internal static class ServerTests
     // Exercise the same reservation/handler release path without opening a socket.
     private static Task ReleaseTestRole(RelayPair pair, bool host) =>
         pair.Serve(new DefaultHttpContext(), host, new CancellationToken(canceled: true));
-
-    private static async Task RelaySourceCapacity(string invite)
-    {
-        var rooms = new RoomDirectory(new ManualTime());
-        var ice = new VerifiedIce(IceDescription.NoDirect, []);
-        var local = IPAddress.Loopback;
-        (Registration Host, Claim Guest) Room()
-        {
-            var room = rooms.Create(invite, 0)!;
-            var guest = rooms.Join(room.Number, ice, local)!;
-            Check(rooms.Answer(room.Number, room.OwnerToken, ice, local), "publish relay-only room");
-            return (room, guest);
-        }
-        var a = IPAddress.Parse("192.0.2.1");
-        var b = IPAddress.Parse("192.0.2.2");
-        var first = Room();
-        var pair = rooms.ReserveRelay(first.Host.Number, first.Guest.GuestToken, false, a);
-        Check(pair.Status == HttpStatusCode.OK &&
-              rooms.ReserveRelay(first.Host.Number, first.Host.OwnerToken, true, a.MapToIPv6()).Status == HttpStatusCode.OK,
-            "one pair counts once behind the same NAT");
-        var second = Room();
-        var waiting = rooms.ReserveRelay(second.Host.Number, second.Host.OwnerToken, true, a);
-        Check(waiting.Status == HttpStatusCode.OK, "same source may occupy a second pair");
-        var third = Room();
-        Check(rooms.ReserveRelay(third.Host.Number, third.Host.OwnerToken, true, a).Status == HttpStatusCode.ServiceUnavailable,
-            "waiting and paired roles share source capacity");
-        var other = rooms.ReserveRelay(third.Host.Number, third.Host.OwnerToken, true, b);
-        Check(other.Status == HttpStatusCode.OK &&
-              rooms.ReserveRelay(third.Host.Number, third.Guest.GuestToken, false, a.MapToIPv6()).Status == HttpStatusCode.ServiceUnavailable,
-            "second role checked against its own source, including mapped IPv4");
-        await ReleaseTestRole(waiting.Pair!, true);
-        Check(rooms.ReserveRelay(third.Host.Number, third.Guest.GuestToken, false, a).Status == HttpStatusCode.OK,
-            "cancel frees its source and a capacity refusal does not consume the role");
-        await ReleaseTestRole(pair.Pair!, false);
-        await ReleaseTestRole(pair.Pair!, true);
-        await ReleaseTestRole(other.Pair!, true);
-        await ReleaseTestRole(other.Pair!, false);
-
-        var pending = new List<RelayPair>();
-        void Reserve(string address, bool available)
-        {
-            var (room, _) = Room();
-            var result = rooms.ReserveRelay(room.Number, room.OwnerToken, true, IPAddress.Parse(address));
-            Check(result.Status == (available ? HttpStatusCode.OK : HttpStatusCode.ServiceUnavailable), "IPv6 concurrent prefix budget");
-            if (result.Pair != null) pending.Add(result.Pair);
-        }
-        Reserve("2001:db8:1::1", true);
-        Reserve("2001:db8:1::2", true);
-        Reserve("2001:db8:1::3", false);     // /64
-        Reserve("2001:db8:1:1::1", true);
-        Reserve("2001:db8:1:2::1", true);
-        Reserve("2001:db8:1:3::1", false);  // /56
-        Reserve("2001:db8:1:100::1", true);
-        Reserve("2001:db8:1:200::1", true);
-        Reserve("2001:db8:1:300::1", false); // /48
-        Reserve("2001:db8:2::1", true);
-        foreach (var held in pending) await ReleaseTestRole(held, true);
-    }
 
     private static void IPv6PrefixLimits()
     {
@@ -277,14 +218,14 @@ internal static class ServerTests
                 "vote only after answer");
             Check(Vote(hostFirst, second, true) == null && Vote(hostFirst, first, true) == "pending" &&
                 Vote(hostFirst, first, true) == "pending", "one authenticated role cannot commit direct");
-            Check(rooms.ReserveRelay(room.Number, first, hostFirst, source).Pair == null, "no relay while direct is pending");
+            Check(rooms.ReserveRelay(room.Number, first, hostFirst).Pair == null, "no relay while direct is pending");
             var expected = secondHasDirect ? "direct" : "relay";
             Check(Vote(!hostFirst, second, secondHasDirect) == expected && Vote(hostFirst, first, true) == expected,
                 "both roles observe the same decision after a lost response");
             Check(Vote(!hostFirst, second, !secondHasDirect) == null && Vote(hostFirst, first, true) == expected,
                 "neither a late retry nor a changed vote can switch a committed room");
             if (secondHasDirect)
-                Check(rooms.ReserveRelay(room.Number, second, !hostFirst, source).Pair == null, "direct decision excludes WSS");
+                Check(rooms.ReserveRelay(room.Number, second, !hostFirst).Pair == null, "direct decision excludes WSS");
         }
         Console.WriteLine("PASS room commits one route across asymmetric direct results, role checks and retries");
     }
@@ -494,6 +435,17 @@ internal static class ServerTests
             Check(received?.Candidates.Single() == ice.Description.Candidates.Single(), "claimed guest obtains answer");
             using var replay = await client.PostAsJsonAsync("/v3/rooms/receive", new { first.Number, claim.GuestToken });
             Check((await replay.Content.ReadAsStringAsync()) == (await receive.Content.ReadAsStringAsync()), "repeat guest read is identical");
+            using var both = await client.PostAsJsonAsync("/v3/rooms/close", new { first.Number, first.OwnerToken, claim.GuestToken });
+            using var neither = await client.PostAsJsonAsync("/v3/rooms/close", new { first.Number });
+            Check(both.StatusCode == HttpStatusCode.BadRequest && neither.StatusCode == HttpStatusCode.BadRequest, "close takes one role");
+            using var swapped = await client.PostAsJsonAsync("/v3/rooms/close", new { first.Number, guestToken = first.OwnerToken });
+            using var stillOpen = await client.PostAsJsonAsync("/v3/rooms/receive", new { first.Number, claim.GuestToken });
+            Check(swapped.StatusCode == HttpStatusCode.NoContent && stillOpen.StatusCode == HttpStatusCode.OK, "close authenticates the selected role");
+            using var revoke = await client.PostAsJsonAsync("/v3/rooms/close", new { first.Number, claim.GuestToken });
+            using var repeat = await client.PostAsJsonAsync("/v3/rooms/close", new { first.Number, claim.GuestToken });
+            using var gone = await client.PostAsJsonAsync("/v3/rooms/receive", new { first.Number, claim.GuestToken });
+            Check(revoke.StatusCode == HttpStatusCode.NoContent && repeat.StatusCode == HttpStatusCode.NoContent &&
+                gone.StatusCode == HttpStatusCode.NotFound, "guest can revoke an authenticated claim idempotently");
             await Close(second);
             await Close(second);
             Check(await Join(second.Number) == null, "owner can revoke");

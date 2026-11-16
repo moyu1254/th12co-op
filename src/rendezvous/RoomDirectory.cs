@@ -21,7 +21,7 @@ internal sealed class RoomDirectory(TimeProvider clock, int pollLimit = RoomDire
     internal static readonly TimeSpan AnswerRetention = TimeSpan.FromSeconds(90);
     private readonly object gate = new();
     private int waitingPolls;
-    private readonly List<RelayReservation> activeRelays = [];
+    private int activeRelays;
     private readonly RelayLimits limits = relayLimits ?? RelayLimits.Default;
     private readonly Dictionary<string, Reservation> numbers = new();
     private readonly AdmissionWindow creates = new(4, 8, 12, 48);
@@ -61,7 +61,7 @@ internal sealed class RoomDirectory(TimeProvider clock, int pollLimit = RoomDire
         internal bool DirectOffered;
         internal bool? HostDirect, GuestDirect;
         internal bool UsesRelay => !DirectOffered || HostDirect == false || GuestDirect == false;
-        internal RelayReservation? Relay;
+        internal RelayPair? Relay;
         internal readonly Mailbox Offer = new(), Answer = new();
     }
     private sealed record Reservation(long AdmittedAt, Entry? Entry);
@@ -78,30 +78,6 @@ internal sealed class RoomDirectory(TimeProvider clock, int pollLimit = RoomDire
                 ? new(true, BinaryPrimitives.ReadUInt64BigEndian(bytes))  // /64
                 : new(false, BinaryPrimitives.ReadUInt32BigEndian(bytes)); // /32
         }
-
-        internal bool SharesPrefix(Network other, int shift) =>
-            IsIPv6 == other.IsIPv6 && (Bits >> shift) == (other.Bits >> shift);
-    }
-
-    private sealed class RelayReservation
-    {
-        internal readonly RelayPair Pair;
-        internal readonly bool FirstHost;
-        private readonly Network first;
-        internal Network? Second;
-        // Teardown holds the pair's lock. Mark this reservation for removal without
-        // acquiring the directory lock that first/second role admission holds.
-        internal volatile bool Released;
-
-        internal RelayReservation(bool host, Network network, RelayLimits limits, TimeProvider clock)
-        {
-            FirstHost = host;
-            first = network;
-            Pair = new RelayPair(host, limits, clock, () => Released = true);
-        }
-
-        internal bool HasSource(Network source, int shift) => first.SharesPrefix(source, shift) ||
-            (Second is { } second && second.SharesPrefix(source, shift));
     }
 
     private sealed class AdmissionWindow(int sourceLimit, int ipv6Limit56, int ipv6Limit48, int globalLimit)
@@ -292,7 +268,7 @@ internal sealed class RoomDirectory(TimeProvider clock, int pollLimit = RoomDire
         }
     }
 
-    internal (HttpStatusCode Status, RelayPair? Pair) ReserveRelay(string number, string token, bool host, IPAddress source)
+    internal (HttpStatusCode Status, RelayPair? Pair) ReserveRelay(string number, string token, bool host)
     {
         lock (gate)
         {
@@ -300,33 +276,15 @@ internal sealed class RoomDirectory(TimeProvider clock, int pollLimit = RoomDire
             if (entry?.UsesRelay != true)
                 return (HttpStatusCode.NotFound, null);
 
-            var network = Network.From(source);
-            activeRelays.RemoveAll(relay => relay.Released);
-            var relay = entry.Relay;
-            if (relay != null && (relay.Released || relay.FirstHost == host || relay.Second.HasValue))
-                return (HttpStatusCode.NotFound, null);
-            if ((relay == null && activeRelays.Count >= limits.Pairs) || !HasRelayCapacity(network, relay))
-                return (HttpStatusCode.ServiceUnavailable, null);
-            if (relay == null)
+            if (entry.Relay == null)
             {
-                entry.Relay = relay = new(host, network, limits, clock);
-                activeRelays.Add(relay);
+                if (Volatile.Read(ref activeRelays) >= limits.Pairs) return (HttpStatusCode.ServiceUnavailable, null);
+                entry.Relay = new(host, limits, clock, () => Interlocked.Decrement(ref activeRelays));
+                Interlocked.Increment(ref activeRelays);
             }
-            else
-            {
-                if (!relay.Pair.ReserveOther(host)) return (HttpStatusCode.NotFound, null);
-                relay.Second = network;
-            }
-            return (HttpStatusCode.OK, relay.Pair);
+            else if (!entry.Relay.ReserveOther(host)) return (HttpStatusCode.NotFound, null);
+            return (HttpStatusCode.OK, entry.Relay);
         }
-    }
-
-    private bool HasRelayCapacity(Network source, RelayReservation? current)
-    {
-        // At most eight pairs. Charge each prefix once per pair, including peers
-        // sharing the same NAT, regardless of which role arrives first.
-        int CountPairs(int shift) => activeRelays.Count(pair => pair != current && pair.HasSource(source, shift));
-        return CountPairs(0) < 2 && (!source.IsIPv6 || CountPairs(8) < 4 && CountPairs(16) < 6);
     }
 
     internal async Task<Poll> Wait(string number, string token, bool host, IPAddress source, CancellationToken cancellation)
@@ -374,14 +332,18 @@ internal sealed class RoomDirectory(TimeProvider clock, int pollLimit = RoomDire
         }
     }
 
-    internal bool Close(string number, string owner)
+    internal bool Close(string number, string token, bool host = true)
     {
         lock (gate)
         {
             RemoveExpired(clock.GetTimestamp());
-            if (!numbers.TryGetValue(number, out var room) || room.Entry is not { } entry ||
-                !MatchesToken(entry.Owner, owner)) return false;
-            entry.Relay?.Pair.Stop();
+            if (!numbers.TryGetValue(number, out var room) || room.Entry is not { } entry) return false;
+            var expected = host ? entry.Owner : entry.Guest;
+            if (expected == null || !MatchesToken(expected, token)) return false;
+            // A guest can abandon setup and release a waiting relay. An already
+            // paired relay has its own socket lifetime and needs no guest control.
+            if (host) entry.Relay?.Stop();
+            else if (entry.Relay?.IsPaired == true) return false;
             Retire(number, room);
             return true;
         }
@@ -391,7 +353,7 @@ internal sealed class RoomDirectory(TimeProvider clock, int pollLimit = RoomDire
     {
         if (room.Entry is { } entry)
         {
-            entry.Relay?.Pair.StopIfWaiting();
+            entry.Relay?.StopIfWaiting();
             entry.Offer.Waiter?.TrySetResult(null);
             entry.Answer.Waiter?.TrySetResult(null);
             CryptographicOperations.ZeroMemory(entry.Owner);
@@ -425,7 +387,6 @@ internal sealed class RoomDirectory(TimeProvider clock, int pollLimit = RoomDire
 
     private void RemoveExpired(long now)
     {
-        activeRelays.RemoveAll(relay => relay.Released);
         foreach (var (number, room) in numbers) ExpireRoom(number, room, now);
         foreach (var (proof, value) in proofs)
             if (clock.GetElapsedTime(value.At, now) >= Lifetime) proofs.Remove(proof);

@@ -5,6 +5,11 @@ using System.Text.Json;
 
 namespace TH12Coop;
 
+internal sealed class PeerSessionEndedException(uint reason) : IOException("相手がセッションを終了しました。")
+{
+    internal uint Reason { get; } = reason;
+}
+
 internal sealed class LockstepPeer
 {
     private readonly SecureChannel channel;
@@ -133,9 +138,11 @@ internal sealed class LockstepPeer
                     if (--pingTokens < 0) throw new IOException("接続確認メッセージの頻度が高すぎます。");
                     break;
                 case 0x14:
-                    if (data.Length != 20 || frame != 0 || BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(16)) is < 1 or > 5)
+                    if (data.Length != 20 || frame != 0)
                         throw new IOException("終了メッセージが不正です。");
-                    throw new IOException("相手がセッションを終了しました。");
+                    var reason = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(16));
+                    if (reason is < 1 or > 5) throw new IOException("終了メッセージが不正です。");
+                    throw new PeerSessionEndedException(reason);
                 default: throw new IOException("未対応の同期メッセージです。");
             }
     }

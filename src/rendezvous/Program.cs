@@ -27,6 +27,7 @@ internal static class Program
     private sealed record Join(string Number, VerifiedIce Offer);
     private sealed record Owner(string Number, string OwnerToken);
     private sealed record Guest(string Number, string GuestToken);
+    private sealed record Close(string Number, string? OwnerToken = null, string? GuestToken = null);
     private sealed record Answer(string Number, string OwnerToken, VerifiedIce Ice);
     private sealed record Route(string Number, string Token, bool Host, bool Direct);
 
@@ -179,9 +180,12 @@ internal static class Program
                     await response.WriteAsJsonAsync(choice, Json, deadline.Token);
                     return;
                 case Operation.Close:
-                    var close = await JsonSerializer.DeserializeAsync<Owner>(request.Body, Json, deadline.Token);
-                    if (close == null || !RoomDirectory.ValidNumber(close.Number) || !RoomDirectory.ValidToken(close.OwnerToken)) break;
-                    directory.Close(close.Number, close.OwnerToken);
+                    var close = await JsonSerializer.DeserializeAsync<Close>(request.Body, Json, deadline.Token);
+                    if (close == null || !RoomDirectory.ValidNumber(close.Number) ||
+                        (close.OwnerToken != null && close.GuestToken != null)) break;
+                    var credential = close.OwnerToken ?? close.GuestToken;
+                    if (!RoomDirectory.ValidToken(credential)) break;
+                    directory.Close(close.Number, credential, host: close.OwnerToken != null);
                     response.StatusCode = 204;
                     return;
             }
@@ -207,7 +211,7 @@ internal static class Program
         var credential = authorization.StartsWith(bearer, StringComparison.OrdinalIgnoreCase) ? authorization[bearer.Length..] : null;
         if (!RoomDirectory.ValidNumber(number) || !RoomDirectory.ValidToken(credential))
         { context.Response.StatusCode = 404; return; }
-        var (status, pair) = directory.ReserveRelay(number, credential, host, source);
+        var (status, pair) = directory.ReserveRelay(number, credential, host);
         if (pair == null) { context.Response.StatusCode = (int)status; return; }
         await pair.Serve(context, host, stopping);
     }

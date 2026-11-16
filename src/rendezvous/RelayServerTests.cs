@@ -31,6 +31,15 @@ internal static class RelayServerTests
             answer.EnsureSuccessStatusCode();
         }
 
+        internal async Task CancelGuestSetup(Peers peers)
+        {
+            using var response = await client.PostAsJsonAsync("/v3/rooms/close", new { peers.Room.Number, peers.Guest.GuestToken }, ct);
+            response.EnsureSuccessStatusCode();
+            // An already paired room retains its signaling and the owner's control.
+            using var receive = await client.PostAsJsonAsync("/v3/rooms/receive", new { peers.Room.Number, peers.Guest.GuestToken }, ct);
+            receive.EnsureSuccessStatusCode();
+        }
+
         internal Task Connect(ClientWebSocket socket, Peers peers, bool host, string? key = null, CancellationToken? cancel = null)
         {
             socket.Options.SetRequestHeader("X-TH12-Room", peers.Room.Number);
@@ -97,6 +106,7 @@ internal static class RelayServerTests
         }
         await Serve(RelayLimits.Default with { Pairs = 1, Bytes = 2 * 16384 + 2 }, Bounds);
         await Serve(RelayLimits.Default with { Pairs = 1, Wait = TimeSpan.FromSeconds(2), Lifetime = TimeSpan.FromSeconds(3) }, Expiry);
+        await Serve(RelayLimits.Default with { Pairs = 3, Idle = TimeSpan.FromSeconds(2) }, SharedAddress);
     }
 
     private static async Task Bounds(Fixture fx, CancellationToken ct)
@@ -112,6 +122,7 @@ internal static class RelayServerTests
         await Task.WhenAll(fx.Connect(host, first, true), fx.Connect(guest, first, false));
         await fx.Denied(first, true, HttpStatusCode.NotFound);
         await fx.Denied(second, true, HttpStatusCode.ServiceUnavailable);
+        await fx.CancelGuestSetup(first); // Releasing signaling with a guest token must preserve this duplex relay.
 
         var payload = RandomNumberGenerator.GetBytes(16384);
         await host.SendAsync(payload.AsMemory(0, 123), WebSocketMessageType.Binary, false, ct);
@@ -191,6 +202,59 @@ internal static class RelayServerTests
         nextGuest.Abort();
         await Closed(nextHost, ct);
         Console.WriteLine("PASS unpaired relay deadline, active session TTL and peer disconnect release capacity");
+    }
+
+    private static async Task SharedAddress(Fixture fx, CancellationToken ct)
+    {
+        // All six clients use the same observed IPv4, as distinct players behind a CGNAT can.
+        using var active = new ClientWebSocket();
+        using var activePeer = new ClientWebSocket();
+        using var quiet = new ClientWebSocket();
+        using var quietPeer = new ClientWebSocket();
+        using var oneWay = new ClientWebSocket();
+        using var silentPeer = new ClientWebSocket();
+        async Task Pair(ClientWebSocket host, ClientWebSocket guest)
+        {
+            var room = await fx.Room();
+            await Task.WhenAll(fx.Connect(host, room, true), fx.Connect(guest, room, false));
+        }
+        await Pair(active, activePeer);
+        await Pair(quiet, quietPeer);
+        await Pair(oneWay, silentPeer);
+        var waiting = await fx.Room();
+        await fx.Denied(waiting, true, HttpStatusCode.ServiceUnavailable);
+
+        var quietClosed = Closed(quiet, ct);
+        var oneWayClosed = Closed(oneWay, ct);
+        byte[] payload = [42];
+        async Task Exchange(WebSocket from, WebSocket to)
+        {
+            await from.SendAsync(payload.AsMemory(), WebSocketMessageType.Binary, true, ct);
+            await Receive(to, payload, ct);
+        }
+        var elapsed = Stopwatch.StartNew();
+        while (!quietClosed.IsCompleted || !oneWayClosed.IsCompleted)
+        {
+            if (elapsed.Elapsed > TimeSpan.FromSeconds(6))
+                throw new InvalidOperationException("Relay did not release an idle direction");
+            await Exchange(active, activePeer);
+            await Exchange(activePeer, active);
+            if (!oneWayClosed.IsCompleted)
+            {
+                // Traffic toward the silent participant cannot renew its lease to send back.
+                try { await oneWay.SendAsync(payload.AsMemory(), WebSocketMessageType.Binary, true, ct); }
+                catch (Exception e) when (e is WebSocketException or InvalidOperationException)
+                { await oneWayClosed.WaitAsync(TimeSpan.FromSeconds(1), ct); }
+            }
+            await Task.Delay(200, ct);
+        }
+        await Task.WhenAll(quietClosed, oneWayClosed);
+        await Exchange(active, activePeer);
+        var next = await Task.WhenAll(fx.AfterCleanup(waiting, true), fx.AfterCleanup(waiting, false));
+        using var nextHost = next[0];
+        using var nextGuest = next[1];
+        await Exchange(nextGuest, nextHost);
+        Console.WriteLine("PASS three pairs sharing one IPv4, global capacity, idle and silent-direction release, and continuing bidirectional traffic");
     }
 
     private static async Task Receive(WebSocket socket, byte[] expected, CancellationToken ct)

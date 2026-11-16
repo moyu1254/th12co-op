@@ -88,7 +88,11 @@ internal sealed class RendezvousClient : IDisposable
         var claim = await Read<Claim>(response, token);
         if (!IsToken(claim.GuestToken)) throw InvalidResponse();
         try { CryptographicOperations.ZeroMemory(RoomIdentity.Parse(claim.Invite).Capability); }
-        catch (ArgumentException) { throw InvalidResponse(); }
+        catch (ArgumentException)
+        {
+            await CancelSetup(number, claim.GuestToken, host: false);
+            throw InvalidResponse();
+        }
         return claim;
     }
 
@@ -170,9 +174,13 @@ internal sealed class RendezvousClient : IDisposable
         return new(ice with { Candidates = allowed }, observed.Select(p => p.Token).ToArray());
     }
 
-    internal async Task Close(Registration room)
+    internal async Task CancelSetup(string number, string credential, bool host, Action<string>? status = null)
     {
-        using var response = await Post("close", room, HttpStatusCode.NoContent, CancellationToken.None);
+        // The caller's token may already be cancelled. Give the peer a bounded
+        // notification attempt without replacing the original setup failure.
+        object request = host ? new { number, ownerToken = credential } : new { number, guestToken = credential };
+        try { using var response = await Post("close", request, HttpStatusCode.NoContent, CancellationToken.None); }
+        catch (IOException) { status?.Invoke("部屋を取り消せませんでした。部屋は期限が来ると自動で閉じます。"); }
     }
 
     internal Task<SecureChannel> AcceptRelay(Registration room, RoomIdentity identity, CancellationToken token) =>
@@ -195,6 +203,7 @@ internal sealed class RendezvousClient : IDisposable
         if (!IsNumber(number) || !IsToken(credential)) throw InvalidResponse();
         var url = new UriBuilder(Origin) { Scheme = "wss", Path = host ? "/v3/relay/host" : "/v3/relay/guest" }.Uri;
         var socket = new ClientWebSocket();
+        RelayStream? transport = null;
         try
         {
             socket.Options.SetRequestHeader("Authorization", "Bearer " + credential);
@@ -206,11 +215,13 @@ internal sealed class RendezvousClient : IDisposable
             await socket.ConnectAsync(url, http, pairing.Token);
             using var handshake = CancellationTokenSource.CreateLinkedTokenSource(token);
             handshake.CancelAfter(TimeSpan.FromSeconds(10));
-            return await authenticate(new RelayStream(socket), handshake.Token);
+            transport = new RelayStream(socket);
+            return await authenticate(transport, handshake.Token);
         }
         catch (Exception error)
         {
-            socket.Dispose();
+            if (transport == null) socket.Dispose();
+            else transport.Dispose();
             if (error is OperationCanceledException && !token.IsCancellationRequested)
                 throw new TimeoutException("中継への接続または相手の認証が期限内に完了しませんでした。", error);
             if (error is WebSocketException)
@@ -223,8 +234,8 @@ internal sealed class RendezvousClient : IDisposable
         HttpClient? client = null)
     {
         bool poll = action is "offer" or "receive";
-        int attempts = poll ? 4 : action is "answer" or "route" ? 2 : 1;
-        int seconds = action switch { "offer" => 25, "receive" or "answer" or "route" => 4, _ => 8 };
+        int attempts = poll ? 4 : action is "answer" or "route" or "close" ? 2 : 1;
+        int seconds = action switch { "offer" => 25, "receive" or "answer" or "route" => 4, "close" => 2, _ => 8 };
         HttpResponseMessage response;
         for (int attempt = 1; ; attempt++)
         {
@@ -250,6 +261,7 @@ internal sealed class RendezvousClient : IDisposable
         response.Dispose();
         throw new IOException(status switch
         {
+            HttpStatusCode.NotFound when action == "route" => "接続準備が取り消されたか、部屋の期限が切れました。",
             HttpStatusCode.NotFound => "部屋が見つかりません。使用済みまたは期限切れの場合は新しい番号を作成してください。",
             HttpStatusCode.TooManyRequests => "合流サーバーへの試行回数が上限に達しました。しばらく待ってください。",
             _ => "合流サーバーがリクエストを受け付けませんでした。"

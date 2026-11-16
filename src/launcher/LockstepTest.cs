@@ -36,6 +36,8 @@ internal static partial class SelfTests
         var localPlayerRoles = new List<uint>();
         string? failure = null;
         var peerErrors = new List<object>();
+        var peerGoodbyes = new List<string>();
+        bool durationReached = false;
         void Status(string prefix, string text)
         {
             if (numbered == null) lock (notes) notes.Add(prefix + text);
@@ -75,6 +77,7 @@ internal static partial class SelfTests
             if (finished != duration) { await finished; failure = "A peer ended before the requested duration."; }
             else
             {
+                durationReached = true;
                 foreach (var peer in new[] { hostPeer, guestPeer })
                 {
                     var pid = peer?.GameProcessId ?? throw new IOException("Game PID was not recorded.");
@@ -108,6 +111,10 @@ internal static partial class SelfTests
                 if (task == null) continue;
                 try { await task; }
                 catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+                // The other process may deliver its authenticated goodbye while our
+                // cancellation is still propagating. Early ends and I/O errors still fail.
+                catch (PeerSessionEndedException end) when (numbered != null && durationReached && end.Reason == 1)
+                { peerGoodbyes.Add(name); }
                 catch (Exception error) { peerErrors.Add(new { peer = name, error = numbered == null ? error.ToString() : error.GetType().Name }); }
             }
         }
@@ -129,7 +136,7 @@ internal static partial class SelfTests
         var ownedProcessesExited = Exited(hostPeer?.GameProcessId) && Exited(guestPeer?.GameProcessId);
         var passed = failure == null && (numbered == null || peerErrors.Count == 0) && quiet.Count == 2 && quiet.All(evidence => evidence.Passed) && Sufficient(hostPeer) && Sufficient(guestPeer) && ownedProcessesExited &&
             (!disconnectTest || disconnectRequested && disconnectMilliseconds < 10000);
-        var result = new { passed, failure, peerErrors, seconds, elapsedMilliseconds = durationClock.ElapsedMilliseconds,
+        var result = new { passed, failure, peerErrors, peerGoodbyes, seconds, elapsedMilliseconds = durationClock.ElapsedMilliseconds,
             protocol = SecureChannel.ProtocolVersion, rules = NetBridge.RulesVersion, nativeMenu,
             startupPlayerOne = nativeMenu ? (int?)null : playerOne, startupPlayerTwo = nativeMenu ? (int?)null : playerTwo, quiet, localPlayerRoles,
             hostGame = new { build = hostBuild.Id, exeHash = hostBuild.ExeHash },

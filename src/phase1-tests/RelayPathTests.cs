@@ -16,6 +16,7 @@ internal sealed class RouteProbe(HttpMessageHandler inner) : DelegatingHandler(i
 {
     internal bool MissingProof { get; init; }
     internal int UnreachablePort { get; init; }
+    internal Action? OnWaitAnswer { get; init; }
     private int closes, upgrades, rewritten;
     internal int Closes => Volatile.Read(ref closes);
     internal int Upgrades => Volatile.Read(ref upgrades);
@@ -25,6 +26,7 @@ internal sealed class RouteProbe(HttpMessageHandler inner) : DelegatingHandler(i
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
     {
         var path = request.RequestUri?.AbsolutePath;
+        if (path == "/v3/rooms/receive") OnWaitAnswer?.Invoke();
         if (path == "/v3/rooms/close") Interlocked.Increment(ref closes);
         if (path is "/v3/relay/host" or "/v3/relay/guest") Interlocked.Increment(ref upgrades);
         if (MissingProof && path == "/v3/rooms/proof")
@@ -52,6 +54,70 @@ internal sealed class RouteProbe(HttpMessageHandler inner) : DelegatingHandler(i
 
 internal static class RelayPathTests
 {
+    internal static async Task GuestAbortsSetup(X509Certificate2 cert, CancellationToken token)
+    {
+        await using var app = DirectoryServer.Build(cert, new(), IPAddress.Loopback, 0, TimeProvider.System);
+        await app.StartAsync(token);
+        try
+        {
+            var url = app.Urls.Single();
+            var hostProbe = new RouteProbe(Program.TestHandler(cert));
+            var guestProbe = new RouteProbe(Program.TestHandler(cert));
+            using var host = new RendezvousClient(url, hostProbe);
+            using var guest = new RendezvousClient(url, guestProbe);
+            using var identity = RoomIdentity.Create();
+            using var differentIdentity = RoomIdentity.Create();
+            var room = await host.Create(identity.Invite, token);
+            using var stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+            var ct = stop.Token;
+            await using var transport = new NumberedTransport(guest);
+            var joining = transport.Join(room.Number, _ => { }, ct);
+            var offer = await host.WaitOffer(room, ct);
+            await using var ice = await UdpIcePeer.GatherAsync(true, host.Origin, ct);
+            await host.Answer(room, ice.Description, ct);
+            var path = await ice.ConnectAsync(offer, ct);
+            // Hold an actual host route request pending while the guest hits a terminal TLS error.
+            var vote = host.AgreeDirect(room.Number, room.OwnerToken, true, true, ct);
+            if (await hostProbe.FirstRouteReply.Task.WaitAsync(ct) != "pending")
+                throw new InvalidOperationException("Expected the host to wait for the guest's vote");
+            await using var quic = new IceQuicConnection();
+            var accepting = quic.Accept(path, differentIdentity, ct);
+            try
+            {
+                try { using var unexpected = await joining; throw new InvalidOperationException("Accepted the wrong certificate"); }
+                catch (AuthenticationException) { }
+                try { await vote.WaitAsync(TimeSpan.FromSeconds(5), ct); throw new InvalidOperationException("Voted on a revoked room"); }
+                catch (IOException) { }
+                if (guestProbe.Closes != 1 || guestProbe.Upgrades != 0 || hostProbe.Upgrades != 0)
+                    throw new InvalidOperationException("Expected exactly one cancellation and no relay after rejection");
+            }
+            finally
+            {
+                stop.Cancel();
+                await Task.WhenAll((Task)vote, joining, accepting).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            }
+            Console.WriteLine("PASS guest certificate rejection preserves its error and ends the host's pending route without relay");
+
+            var cancelledRoom = await host.Create(identity.Invite, token);
+            using var user = CancellationTokenSource.CreateLinkedTokenSource(token);
+            var cancellingProbe = new RouteProbe(Program.TestHandler(cert)) { OnWaitAnswer = user.Cancel };
+            using var cancellingGuest = new RendezvousClient(url, cancellingProbe);
+            await using var cancelling = new NumberedTransport(cancellingGuest);
+            try
+            {
+                using var unexpected = await cancelling.Join(cancelledRoom.Number, _ => { }, user.Token);
+                throw new InvalidOperationException("Cancelled guest returned a channel");
+            }
+            catch (OperationCanceledException) when (user.IsCancellationRequested && !token.IsCancellationRequested) { }
+            if (cancellingProbe.Closes != 1 || cancellingProbe.Upgrades != 0)
+                throw new InvalidOperationException("A cancelled guest did not revoke its claim");
+            try { await host.WaitOffer(cancelledRoom, token); throw new InvalidOperationException("Cancelled guest left its offer in the room"); }
+            catch (IOException) { }
+            Console.WriteLine("PASS a cancelled guest revokes its claim while waiting for the host's answer");
+        }
+        finally { await app.StopAsync(); }
+    }
+
     internal static async Task AsymmetricRoute(RendezvousClient service, Uri url, X509Certificate2 cert, CancellationToken token)
     {
         using var identity = RoomIdentity.Create();
@@ -93,7 +159,6 @@ internal static class RelayPathTests
 
     internal static async Task Run(X509Certificate2 cert, CancellationToken token)
     {
-        await RelayShutdownTest.Run(token);
         await using var app = DirectoryServer.Build(cert, new(), IPAddress.Loopback, 0, TimeProvider.System);
         await app.StartAsync(token);
         try
@@ -149,6 +214,13 @@ internal static class RelayPathTests
             if (!(await guestPeer.Receive(ct)).SequenceEqual(new byte[] { 42 })) throw new IOException("Relayed reply mismatch");
             await guestPeer.Send([43], ct);
             guestPeer.Dispose();
+            guestService.Dispose(); // OnlineSession releases its owned HTTP handler as soon as the game exits.
+            if (missingHostProof)
+            {
+                // The remote application still has unread final TLS data and a pending write.
+                await Task.Delay(TimeSpan.FromMilliseconds(1500), ct);
+                await hostPeer.Send([44], ct);
+            }
             if (!(await hostPeer.Receive(ct)).SequenceEqual(new byte[] { 43 })) throw new IOException("Lost final relayed record");
             try { await hostPeer.Receive(ct); throw new InvalidOperationException("Relay stayed open after peer closed"); }
             catch (EndOfStreamException) { }

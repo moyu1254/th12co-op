@@ -7,13 +7,17 @@ namespace TH12Coop;
 internal sealed class RelayStream(WebSocket socket) : Stream
 {
     private readonly RelayMessages messages = new();
+    private readonly SemaphoreSlim reader = new(1, 1);
+    private readonly SemaphoreSlim writer = new(1, 1);
+    private Task<ReadOnlyMemory<byte>>? pending;
     private ReadOnlyMemory<byte> remaining;
     private bool eof;
-    private int disposed, reading;
+    private int disposed;
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default)
     {
-        Interlocked.Increment(ref reading);
+        ObjectDisposedException.ThrowIf(!CanRead, this);
+        await reader.WaitAsync(token).ConfigureAwait(false);
         try
         {
             ObjectDisposedException.ThrowIf(!CanRead, this);
@@ -21,7 +25,7 @@ internal sealed class RelayStream(WebSocket socket) : Stream
             if (eof || buffer.IsEmpty) return 0;
             if (remaining.IsEmpty)
             {
-                remaining = await messages.Read(socket, token).ConfigureAwait(false);
+                remaining = await ReadMessage(token).ConfigureAwait(false);
                 if (remaining.IsEmpty)
                 {
                     eof = true;
@@ -33,30 +37,60 @@ internal sealed class RelayStream(WebSocket socket) : Stream
             remaining = remaining[count..];
             return count;
         }
-        finally { Interlocked.Decrement(ref reading); }
+        finally { reader.Release(); }
+    }
+
+    // Cancelling a ManagedWebSocket receive aborts both halves of the socket.
+    // Cancel only the caller's wait and keep the one physical read (including
+    // any partial message) for the next reader or the closing handshake.
+    private async ValueTask<ReadOnlyMemory<byte>> ReadMessage(CancellationToken token)
+    {
+        pending ??= messages.Read(socket, CancellationToken.None).AsTask();
+        var payload = await pending.WaitAsync(token).ConfigureAwait(false);
+        pending = null;
+        return payload;
     }
 
     public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken token = default)
     {
         ObjectDisposedException.ThrowIf(!CanWrite, this);
-        token.ThrowIfCancellationRequested();
-        while (!buffer.IsEmpty)
+        await writer.WaitAsync(token).ConfigureAwait(false);
+        try
         {
-            int count = Math.Min(buffer.Length, RelayMessages.MaxBytes);
-            await socket.SendAsync(buffer[..count], WebSocketMessageType.Binary, true, token).ConfigureAwait(false);
-            buffer = buffer[count..];
+            ObjectDisposedException.ThrowIf(!CanWrite, this);
+            token.ThrowIfCancellationRequested();
+            // After admission SslStream owns this buffer until our write completes.
+            // Finish every chunk before another write or the close can overtake it.
+            // Cancelling ManagedWebSocket.SendAsync would abort the receive half too.
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            while (!buffer.IsEmpty)
+            {
+                int count = Math.Min(buffer.Length, RelayMessages.MaxBytes);
+                await socket.SendAsync(buffer[..count], WebSocketMessageType.Binary, true, deadline.Token).ConfigureAwait(false);
+                buffer = buffer[count..];
+            }
         }
+        finally { writer.Release(); }
+    }
+
+    private async Task DrainWriter()
+    {
+        await writer.WaitAsync().ConfigureAwait(false);
+        writer.Release();
     }
 
     // A TLS close_notify follows the final record before we close the outer WSS.
     // ShutdownAsync has no token; aborting the socket bounds a stalled final write.
-    internal void FinishTls(SslStream tls)
+    internal void FinishTls(SslStream tls) => _ = ShutdownTls(tls);
+
+    private async Task ShutdownTls(SslStream tls)
     {
         try
         {
+            await DrainWriter().ConfigureAwait(false);
             using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(1));
             using var interrupt = limit.Token.Register(socket.Abort);
-            tls.ShutdownAsync().GetAwaiter().GetResult();
+            await tls.ShutdownAsync().ConfigureAwait(false);
         }
         catch (Exception e) when (e is IOException or WebSocketException or InvalidOperationException or OperationCanceledException) { }
         finally { tls.Dispose(); }
@@ -65,25 +99,40 @@ internal sealed class RelayStream(WebSocket socket) : Stream
     protected override void Dispose(bool disposing)
     {
         if (disposing && Interlocked.Exchange(ref disposed, 1) == 0)
+            _ = CloseSocket();
+        base.Dispose(disposing);
+    }
+
+    private async Task CloseSocket()
+    {
+        try
         {
+            await DrainWriter().ConfigureAwait(false);
             try
             {
                 if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
                 {
-                    // Give the peer time to reply to the close. Once disposed is set no
-                    // new reader can reach the socket. An existing reader owns that
-                    // direction, so use a write-only close in that case.
                     using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(1));
-                    var close = Volatile.Read(ref reading) == 0
-                        ? socket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, limit.Token)
-                        : socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, null, limit.Token);
-                    close.GetAwaiter().GetResult();
+                    await socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, null, limit.Token).ConfigureAwait(false);
                 }
             }
-            catch (Exception e) when (e is WebSocketException or OperationCanceledException or ObjectDisposedException) { }
-            finally { socket.Dispose(); }
+            catch (Exception e) when (e is WebSocketException or OperationCanceledException or InvalidOperationException or IOException)
+            { socket.Abort(); }
+
+            // Let the existing reader finish before consuming the reverse path.
+            // Even when its caller cancelled, observe the retained physical read.
+            using var grace = new CancellationTokenSource(TimeSpan.FromSeconds(40));
+            using var interrupt = grace.Token.Register(socket.Abort);
+            await reader.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                while (pending != null || socket.State == WebSocketState.CloseSent)
+                    if ((await ReadMessage(CancellationToken.None).ConfigureAwait(false)).IsEmpty) break;
+            }
+            finally { reader.Release(); }
         }
-        base.Dispose(disposing);
+        catch (Exception e) when (e is IOException or WebSocketException or OperationCanceledException or InvalidOperationException) { }
+        finally { socket.Dispose(); }
     }
 
     public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken token) =>
