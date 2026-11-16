@@ -26,10 +26,85 @@ internal static class ServerTests
     {
         var invite = "T12L5." + Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(64));
         CapacityAndLimits(invite);
-        Console.WriteLine("PASS capacity, expiration and source/global budgets");
+        IPv6PrefixLimits();
+        IndependentOperationLimits();
+        RollingExpiration();
+        ReservationHeadroom(invite);
+        Console.WriteLine("PASS room capacity, IPv4/IPv6 prefix budgets, rolling expiration and independent global limits");
         await HttpsLifecycle(invite);
         Console.WriteLine("PASS HTTPS create, atomic claim, owner cancellation and request bounds");
         return 0;
+    }
+
+    private static void IPv6PrefixLimits()
+    {
+        foreach (var (operation, per56, per48) in new[] { (Operation.Create, 8, 12), (Operation.Join, 12, 24), (Operation.Close, 24, 36) })
+        {
+            var rooms = new RoomDirectory(new ManualTime());
+            int admitted = 0;
+            // The fourth hextet's low byte varies the /64 within one /56.
+            for (var subnet = 0; subnet < 256; subnet++)
+                if (rooms.Admit(operation, IPAddress.Parse($"2001:db8:101:{subnet:x}::1"))) admitted++;
+            Check(admitted == per56, "one IPv6 /56 shares a budget across all its /64s");
+            // Other /56s can still use the remaining /48 budget. Rejections above spent none of it.
+            for (var subnet = 1; subnet < 256; subnet++)
+                if (rooms.Admit(operation, IPAddress.Parse($"2001:db8:101:{subnet << 8:x}::1"))) admitted++;
+            Check(admitted == per48, "one IPv6 /48 shares a budget across its /56s");
+            Check(rooms.Admit(operation, IPAddress.Parse("2001:db8:102::1")), "unrelated IPv6 /48 still admitted");
+        }
+    }
+
+    private static void IndependentOperationLimits()
+    {
+        var rooms = new RoomDirectory(new ManualTime());
+        var source = 0;
+        foreach (var (op, limit) in new[] { (Operation.Create, 48), (Operation.Close, 96), (Operation.Join, 120) })
+        {
+            // Each accepted request comes from a distinct /48. All 264 budgeted requests fit,
+            // including new sources arriving after the old 256-source table would have filled.
+            for (var i = 0; i < limit; i++)
+                Check(rooms.Admit(op, IPAddress.Parse($"2001:db8:{++source:x}::1")), "independent operation capacity");
+            Check(!rooms.Admit(op, IPAddress.Loopback), "global operation budget enforced");
+        }
+    }
+
+    private static void RollingExpiration()
+    {
+        var clock = new ManualTime();
+        var rooms = new RoomDirectory(clock);
+        var source = IPAddress.Loopback;
+        Check(rooms.Admit(Operation.Create, source), "first create");
+        clock.Now = RoomDirectory.Lifetime.Ticks - 1;
+        for (var i = 0; i < 3; i++) Check(rooms.Admit(Operation.Create, source), "remaining creates");
+        clock.Now++;
+        Check(rooms.Admit(Operation.Create, source), "one expired admission reclaimed");
+        Check(!rooms.Admit(Operation.Create, source), "recent admissions survive the ten-minute boundary");
+        clock.Now += RoomDirectory.Lifetime.Ticks;
+        for (var i = 0; i < 4; i++) Check(rooms.Admit(Operation.Create, source), "expired budget reclaimed without a timer tick");
+    }
+
+    private static void ReservationHeadroom(string invite)
+    {
+        var clock = new ManualTime();
+        var rooms = new RoomDirectory(clock);
+        var sources = Enumerable.Range(0, 16).Select(i => IPAddress.Parse($"2001:db8:101:{i << 8:x}::1")).ToArray();
+        for (var window = 0; window < 2; window++)
+        {
+            clock.Now = window * RoomDirectory.Lifetime.Ticks;
+            var admitted = sources.Where(ip => rooms.Admit(Operation.Create, ip)).ToArray();
+            Check(admitted.Length == 12, "create budget per /48");
+            // The first batch finishes reading JSON after admission. Its number reservations
+            // are still occupied (including claimed rooms) when the next batch arrives.
+            if (window == 0) clock.Now += TimeSpan.TicksPerSecond;
+            foreach (var ip in admitted)
+            {
+                var room = rooms.Create(invite, ip);
+                Check(room != null && rooms.Take(room.Number) != null, "single-claim registration");
+            }
+        }
+        var other = IPAddress.Parse("2001:db8:102::1");
+        Check(rooms.Admit(Operation.Create, other) && rooms.Create(invite, other) != null,
+            "unrelated /48 can register while retired numbers from both batches occupy slots");
     }
 
     private static void CapacityAndLimits(string invite)

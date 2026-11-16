@@ -88,7 +88,8 @@ internal static partial class SelfTests
             var hostGate = OnlineSession.ConfirmPeer(host, WaitForClick, token);
             var guestGate = OnlineSession.ConfirmPeer(guest, (_, _) => Task.FromResult(false), token);
             await ExpectThrowsAsync<IOException>(() => guestGate);
-            await ExpectThrowsAsync<IOException>(() => hostGate);
+            try { await hostGate; throw new Exception("Peer accepted a declined comparison"); }
+            catch (IOException e) when (e.Message == "相手が照合を承認しませんでした。") { }
             Expect(closed, "remote refusal dismisses the local comparison before return");
         }
         passed.Add("Pinned TLS numbered peers derive the same short code; both approvals required and refusal dismisses the peer prompt");

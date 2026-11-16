@@ -94,32 +94,34 @@ internal static class OnlineSession
         RendezvousClient.Registration? room = null;
         try
         {
+            status("部屋を作成しています");
+            await using var mapping = await openMapping(token);
+            using var wait = CancellationTokenSource.CreateLinkedTokenSource(token);
+            wait.CancelAfter(TimeSpan.FromMinutes(10));
             try
             {
-                status("部屋を作成しています");
-                await using var mapping = await openMapping(token);
-                using var wait = CancellationTokenSource.CreateLinkedTokenSource(token);
-                wait.CancelAfter(TimeSpan.FromMinutes(10));
                 room = await service.Create(identity.Invite, wait.Token);
                 roomIssued(room.Number);
                 status(mapping != null ? "ゲストの接続を待っています" :
                     "接続待ち · 外部から接続できない場合は TCP 3012 のポート転送を設定してください");
-                try { accepted = await AcceptGuest(listener, identity, wait.Token, numbered: true); }
-                catch (OperationCanceledException) when (!token.IsCancellationRequested)
-                { throw new TimeoutException("部屋番号が期限切れになりました。新しい部屋を作成してください。"); }
-                finally { listener.Stop(); }
+                accepted = await AcceptGuest(listener, identity, wait.Token, numbered: true);
+                return accepted;
             }
-            finally
-            {
-                if (room != null)
-                {
-                    try { await service.Close(room); }
-                    catch (IOException) { status("合流サーバーに終了を通知できませんでした。部屋番号は10分で失効します。"); }
-                }
-            }
-            return accepted;
+            catch (OperationCanceledException) when (wait.IsCancellationRequested && !token.IsCancellationRequested)
+            { throw new TimeoutException("部屋番号が期限切れになりました。新しい部屋を作成してください。"); }
+            finally { listener.Stop(); }
         }
-        catch { accepted?.Dispose(); throw; }
+        catch
+        {
+            // Join already consumed the number before returning the guest's invitation.
+            if (accepted != null) accepted.Dispose();
+            else if (room != null)
+            {
+                try { await service.Close(room); }
+                catch (IOException) { status("合流サーバーに終了を通知できませんでした。部屋番号は10分で失効します。"); }
+            }
+            throw;
+        }
     }
 
     internal static async Task ConfirmPeer(SecureChannel channel, Func<string, CancellationToken, Task<bool>> confirm, CancellationToken token)

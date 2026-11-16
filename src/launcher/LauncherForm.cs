@@ -119,7 +119,11 @@ internal sealed class LauncherForm : Form
         browse.Click += async (_, _) => await BrowseGame();
         inputSettingsButton.Click += (_, _) => EditInputSettings();
         gameSettingsButton.Click += async (_, _) => await EditGameSettings();
-        stop.Click += (_, _) => lifetime?.Cancel();
+        stop.Click += (_, _) =>
+        {
+            if (confirmation != null) confirmation.TrySetResult(false);
+            else lifetime?.Cancel();
+        };
         FormClosing += OnClosing;
         SetMode();
         start.Enabled = false;
@@ -260,11 +264,11 @@ internal sealed class LauncherForm : Form
         confirmation = choice;
         start.Text = "照合コードが一致";
         start.Enabled = true;
-        stop.Text = "中止";
+        stop.Text = "一致しない";
         try
         {
             var matches = await choice.Task.WaitAsync(token);
-            SetStatus("相手の確認を待っています");
+            if (matches) SetStatus("相手の確認を待っています");
             return matches;
         }
         finally

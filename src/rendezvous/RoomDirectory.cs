@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
@@ -14,57 +15,68 @@ internal sealed class RoomDirectory(TimeProvider clock)
     internal static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(10);
     internal const int Port = 3012;
     private const int MaxReservations = 32;
-    private const int MaxSources = 256;
     private readonly object gate = new();
     private readonly Dictionary<string, Reservation> numbers = new();
-    private readonly Dictionary<IPAddress, Budget> sources = new();
-    private Budget global = new(clock.GetTimestamp());
+    private readonly AdmissionWindow creates = new(4, 8, 12, 48);
+    private readonly AdmissionWindow joins = new(6, 12, 24, 120);
+    private readonly AdmissionWindow closes = new(12, 24, 36, 96);
 
     private sealed record Entry(Candidate Candidate, byte[] OwnerToken);
     private sealed record Reservation(long Created, Entry? Entry);
-    private sealed class Budget(long started)
-    {
-        internal readonly long Started = started;
-        internal readonly int[] Uses = new int[3];
-    }
-
     internal static IPAddress Normalize(IPAddress source) => source.IsIPv4MappedToIPv6 ? source.MapToIPv4() : source;
 
-    private static IPAddress Network(IPAddress source)
+    private readonly record struct Network(bool IsIPv6, ulong Bits)
     {
-        source = Normalize(source);
-        if (source.AddressFamily != AddressFamily.InterNetworkV6) return source;
-        var bytes = source.GetAddressBytes();
-        Array.Clear(bytes, 8, 8); // Privacy addresses on the same /64 share a budget.
-        return new IPAddress(bytes);
+        internal static Network From(IPAddress address)
+        {
+            address = Normalize(address);
+            Span<byte> bytes = stackalloc byte[16];
+            address.TryWriteBytes(bytes, out _);
+            return address.AddressFamily == AddressFamily.InterNetworkV6
+                ? new(true, BinaryPrimitives.ReadUInt64BigEndian(bytes))  // /64
+                : new(false, BinaryPrimitives.ReadUInt32BigEndian(bytes)); // /32
+        }
+    }
+
+    private sealed class AdmissionWindow(int sourceLimit, int ipv6Limit56, int ipv6Limit48, int globalLimit)
+    {
+        // Only admitted requests occupy space. The global operation limit bounds both storage
+        // and the scan, even when every request presents a previously unseen source address.
+        private readonly Queue<(long At, Network Network)> accepted = new();
+
+        internal void Expire(long now, TimeProvider clock)
+        {
+            while (accepted.TryPeek(out var first) && clock.GetElapsedTime(first.At, now) >= Lifetime)
+                accepted.Dequeue();
+        }
+
+        internal bool TryAdmit(Network source, long now, TimeProvider clock)
+        {
+            Expire(now, clock);
+            if (accepted.Count >= globalLimit) return false;
+            int sameSource = 0, same56 = 0, same48 = 0;
+            foreach (var (_, other) in accepted)
+            {
+                if (source == other && ++sameSource >= sourceLimit) return false;
+                if (!source.IsIPv6 || !other.IsIPv6) continue;
+                if ((source.Bits >> 8) == (other.Bits >> 8) && ++same56 >= ipv6Limit56) return false;
+                if ((source.Bits >> 16) == (other.Bits >> 16) && ++same48 >= ipv6Limit48) return false;
+            }
+            accepted.Enqueue((now, source));
+            return true;
+        }
     }
 
     internal bool Admit(Operation op, IPAddress source)
     {
-        lock (gate)
+        var window = op switch
         {
-            var now = clock.GetTimestamp();
-            if (clock.GetElapsedTime(global.Started, now) >= Lifetime) global = new(now);
-            var (globalLimit, sourceLimit) = op switch
-            {
-                Operation.Create => (48, 4),
-                Operation.Join => (120, 6),
-                Operation.Close => (96, 12),
-                _ => throw new ArgumentOutOfRangeException(nameof(op))
-            };
-            var index = (int)op;
-            if (global.Uses[index] >= globalLimit) return false;
-            var key = Network(source);
-            if (!sources.TryGetValue(key, out var budget) || clock.GetElapsedTime(budget.Started, now) >= Lifetime)
-            {
-                if (budget is null && sources.Count >= MaxSources) return false;
-                sources[key] = budget = new(now);
-            }
-            if (budget.Uses[index] >= sourceLimit) return false;
-            ++budget.Uses[index];
-            ++global.Uses[index];
-            return true;
-        }
+            Operation.Create => creates,
+            Operation.Join => joins,
+            Operation.Close => closes,
+            _ => throw new ArgumentOutOfRangeException(nameof(op))
+        };
+        lock (gate) return window.TryAdmit(Network.From(source), clock.GetTimestamp(), clock);
     }
 
     internal static bool ValidNumber(string? value) => value is { Length: 6 } && value.All(char.IsAsciiDigit);
@@ -115,8 +127,9 @@ internal sealed class RoomDirectory(TimeProvider clock)
                 if (reservation.Entry is { } entry) CryptographicOperations.ZeroMemory(entry.OwnerToken);
                 numbers.Remove(number);
             }
-            foreach (var (source, budget) in sources)
-                if (clock.GetElapsedTime(budget.Started, now) >= Lifetime) sources.Remove(source);
+            creates.Expire(now, clock);
+            joins.Expire(now, clock);
+            closes.Expire(now, clock);
         }
     }
 }

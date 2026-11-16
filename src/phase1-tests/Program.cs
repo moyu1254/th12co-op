@@ -10,6 +10,18 @@ namespace TH12Coop.Phase1Tests;
 
 internal static class Program
 {
+    private sealed class CloseCounter(HttpMessageHandler inner) : DelegatingHandler(inner)
+    {
+        private int requests;
+        internal int Requests => Volatile.Read(ref requests);
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            if (request.RequestUri?.AbsolutePath == "/v1/rooms/close") Interlocked.Increment(ref requests);
+            return base.SendAsync(request, token);
+        }
+    }
+
     private sealed class WaitingMapping : IAsyncDisposable
     {
         internal bool Opened { get; private set; }
@@ -74,7 +86,8 @@ internal static class Program
         try
         {
             var url = new Uri(app.Urls.Single());
-            using var service = new RendezvousClient(url.AbsoluteUri, TestHandler(cert));
+            var closes = new CloseCounter(TestHandler(cert));
+            using var service = new RendezvousClient(url.AbsoluteUri, closes);
             using var identity = RoomIdentity.Create();
             var mapping = new WaitingMapping();
             var confirmation = new Confirmation(mapping);
@@ -132,10 +145,15 @@ internal static class Program
                 }
             }
             Check(confirmation.BothConfirmed && mapping.Closed, "Missing waiting cleanup or peer confirmation");
+            Check(closes.Requests == 0, "An authenticated guest's claim caused another request to close the room");
             using var auditClient = new HttpClient(TestHandler(cert)) { BaseAddress = url, Timeout = TimeSpan.FromSeconds(5) };
             using var second = await auditClient.PostAsJsonAsync("/v1/rooms/join", new { number = await issued.Task });
             Check(second.StatusCode == HttpStatusCode.NotFound, "Room remained joinable");
-            if (games == null) await CancelWaitingHost(service, auditClient);
+            if (games == null)
+            {
+                await CancelWaitingHost(service, auditClient);
+                Check(closes.Requests == 1, "Cancelling an unclaimed room must send one close request");
+            }
             Console.WriteLine(games == null ? "PASS numbered HTTPS/TLS loopback, confirmation and cleanup" :
                 "PASS numbered loopback game, lockstep, quiet operation and cleanup");
             return 0;
