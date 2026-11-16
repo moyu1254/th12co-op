@@ -8,11 +8,14 @@ namespace TH12Coop;
 
 internal static partial class SelfTests
 {
+    internal delegate Task StartNumberedTestPeer(bool host, Action<string> status, CancellationToken token,
+        Func<uint, uint> input, Action<LockstepPeer> observe, int? character);
+
     public static async Task<int> Lockstep(string gameDirectory, string? nativePath, int seconds, bool disconnectTest = false, string? guestGameDirectory = null,
-        int playerOne = 0, int playerTwo = 5, bool nativeMenu = false)
+        int playerOne = 0, int playerTwo = 5, bool nativeMenu = false, StartNumberedTestPeer? numbered = null)
     {
         using var lifetime = new CancellationTokenSource();
-        using var identity = RoomIdentity.Create();
+        using var identity = numbered == null ? RoomIdentity.Create() : null;
         using var guestLifetime = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         guestGameDirectory ??= gameDirectory;
         var hostBuild = await GameBuild.Identify(gameDirectory, lifetime.Token);
@@ -20,8 +23,12 @@ internal static partial class SelfTests
         var durationClock = Stopwatch.StartNew();
         long? disconnectMilliseconds = null;
         var disconnectRequested = false;
-        var portProbe = new TcpListener(IPAddress.Loopback, 0); portProbe.Start();
-        var port = ((IPEndPoint)portProbe.LocalEndpoint).Port; portProbe.Stop();
+        int port = 0;
+        if (numbered == null)
+        {
+            using var portProbe = new TcpListener(IPAddress.Loopback, 0); portProbe.Start();
+            port = ((IPEndPoint)portProbe.LocalEndpoint).Port;
+        }
         var listening = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         LockstepPeer? hostPeer = null, guestPeer = null;
         var notes = new List<string>();
@@ -30,7 +37,10 @@ internal static partial class SelfTests
         string? failure = null;
         var peerErrors = new List<object>();
         void Status(string prefix, string text)
-        { lock (notes) notes.Add(prefix + text); if (prefix == "Host: " && text.StartsWith("接続待ち", StringComparison.Ordinal)) listening.TrySetResult(); }
+        {
+            if (numbered == null) lock (notes) notes.Add(prefix + text);
+            if (prefix == "Host: " && text.StartsWith("接続待ち", StringComparison.Ordinal)) listening.TrySetResult();
+        }
         uint Input(bool host, uint frame)
         {
             var peer = host ? hostPeer : guestPeer;
@@ -38,16 +48,28 @@ internal static partial class SelfTests
             var direction = ((frame / 120 & 1) == 0) == host ? 0x40u : 0x80u;
             return 1 | direction;
         }
-        var host = OnlineSession.Host(gameDirectory, port, identity, 3, text => Status("Host: ", text), lifetime.Token,
-            nativePath, true, frame => Input(true, frame), peer => hostPeer = peer, nativeMenu ? null : playerOne);
+        Task Start(bool isHost)
+        {
+            var token = isHost ? lifetime.Token : guestLifetime.Token;
+            Action<string> status = text => Status(isHost ? "Host: " : "Guest: ", text);
+            Func<uint, uint> input = frame => Input(isHost, frame);
+            void Observe(LockstepPeer peer) { if (isHost) hostPeer = peer; else guestPeer = peer; }
+            int? character = nativeMenu ? null : isHost ? playerOne : playerTwo;
+            if (numbered != null) return numbered(isHost, status, token, input, Observe, character);
+            return isHost ? OnlineSession.Host(gameDirectory, port, identity!, 3, status, token, nativePath, true, input, Observe, character)
+                : OnlineSession.Join(guestGameDirectory, "127.0.0.1", port, identity!.Invite, status, token, nativePath, true, input, Observe, character);
+        }
+        var host = Start(true);
         Task? guest = null;
         try
         {
-            var wait = listening.Task.WaitAsync(TimeSpan.FromSeconds(20), lifetime.Token);
-            if (await Task.WhenAny(wait, host) == host) await host;
-            await wait;
-            guest = OnlineSession.Join(guestGameDirectory, "127.0.0.1", port, identity.Invite, text => Status("Guest: ", text), guestLifetime.Token,
-                nativePath, true, frame => Input(false, frame), peer => guestPeer = peer, nativeMenu ? null : playerTwo);
+            if (numbered == null)
+            {
+                var wait = listening.Task.WaitAsync(TimeSpan.FromSeconds(20), lifetime.Token);
+                if (await Task.WhenAny(wait, host) == host) await host;
+                await wait;
+            }
+            guest = Start(false);
             var duration = Task.Delay(TimeSpan.FromSeconds(seconds), lifetime.Token);
             var finished = await Task.WhenAny(host, guest, duration);
             if (finished != duration) { await finished; failure = "A peer ended before the requested duration."; }
@@ -77,7 +99,7 @@ internal static partial class SelfTests
                 disconnectMilliseconds = stopping.ElapsedMilliseconds;
             }
         }
-        catch (Exception error) { failure = error.ToString(); }
+        catch (Exception error) { failure = numbered == null ? error.ToString() : error.GetType().Name; }
         finally
         {
             lifetime.Cancel();
@@ -86,7 +108,7 @@ internal static partial class SelfTests
                 if (task == null) continue;
                 try { await task; }
                 catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
-                catch (Exception error) { peerErrors.Add(new { peer = name, error = error.ToString() }); }
+                catch (Exception error) { peerErrors.Add(new { peer = name, error = numbered == null ? error.ToString() : error.GetType().Name }); }
             }
         }
         object? Summary(LockstepPeer? peer) => peer == null ? null : new
@@ -105,7 +127,7 @@ internal static partial class SelfTests
             catch (ArgumentException) { return true; }
         }
         var ownedProcessesExited = Exited(hostPeer?.GameProcessId) && Exited(guestPeer?.GameProcessId);
-        var passed = failure == null && quiet.Count == 2 && quiet.All(evidence => evidence.Passed) && Sufficient(hostPeer) && Sufficient(guestPeer) && ownedProcessesExited &&
+        var passed = failure == null && (numbered == null || peerErrors.Count == 0) && quiet.Count == 2 && quiet.All(evidence => evidence.Passed) && Sufficient(hostPeer) && Sufficient(guestPeer) && ownedProcessesExited &&
             (!disconnectTest || disconnectRequested && disconnectMilliseconds < 10000);
         var result = new { passed, failure, peerErrors, seconds, elapsedMilliseconds = durationClock.ElapsedMilliseconds,
             protocol = SecureChannel.ProtocolVersion, rules = NetBridge.RulesVersion, nativeMenu,
@@ -114,7 +136,8 @@ internal static partial class SelfTests
             guestGame = new { build = guestBuild.Id, exeHash = guestBuild.ExeHash },
             disconnectTest, disconnectRequested, disconnectMilliseconds, ownedProcessesExited, host = Summary(hostPeer), guest = Summary(guestPeer), notes,
             scope = "Two actual TH12 processes, separate game state and working directories, pinned TLS 1.3 input lockstep over loopback. No video/audio stream. Not a second physical PC or WAN test." };
-        File.WriteAllText(Path.Combine(AppContext.BaseDirectory, disconnectTest ? "disconnect-test-results.json" : "lockstep-test-results.json"), JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+        var filename = numbered != null ? "numbered-lockstep-test-results.json" : disconnectTest ? "disconnect-test-results.json" : "lockstep-test-results.json";
+        File.WriteAllText(Path.Combine(AppContext.BaseDirectory, filename), JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
         return passed ? 0 : 1;
     }
 }

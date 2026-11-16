@@ -18,7 +18,8 @@ internal sealed class RoomIdentity : IDisposable
         Certificate = certificate;
         Capability = capability;
         var invite = SHA256.HashData(certificate.RawData).Concat(capability).ToArray();
-        Invite = "T12L4." + Convert.ToBase64String(invite).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        try { Invite = "T12L5." + Convert.ToBase64String(invite).TrimEnd('=').Replace('+', '-').Replace('/', '_'); }
+        finally { CryptographicOperations.ZeroMemory(invite); }
     }
 
     public static RoomIdentity Create()
@@ -41,13 +42,19 @@ internal sealed class RoomIdentity : IDisposable
     public static (byte[] CertificateHash, byte[] Capability) Parse(string code)
     {
         code = code.Trim();
-        if (!code.StartsWith("T12L4.", StringComparison.Ordinal)) throw new ArgumentException("このバージョンのルームコードを入力してください。");
+        if (code.Length != 92 || !code.StartsWith("T12L5.", StringComparison.Ordinal) ||
+            code.AsSpan(6).ContainsAnyExcept("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_") ||
+            !"AQgw".Contains(code[^1])) throw new ArgumentException("このバージョンのルームコードを入力してください。");
         var encoded = code[6..].Replace('-', '+').Replace('_', '/');
         try
         {
             var data = Convert.FromBase64String(encoded.PadRight((encoded.Length + 3) / 4 * 4, '='));
-            if (data.Length != 64) throw new FormatException();
-            return (data[..32], data[32..]);
+            try
+            {
+                if (data.Length != 64) throw new FormatException();
+                return (data[..32], data[32..]);
+            }
+            finally { CryptographicOperations.ZeroMemory(data); }
         }
         catch (FormatException) { throw new ArgumentException("ルームコードが正しくありません。ホストからコード全体をコピーしてください。"); }
     }
@@ -57,22 +64,22 @@ internal sealed class RoomIdentity : IDisposable
 
 // TLS 1.3 owns encryption, directional record keys, replay protection and forward
 // secrecy. The invite pins the exact ephemeral certificate and separately grants
-// guest access; neither platform certificate trust nor a public discovery server
-// can substitute for that invite. Application records have an independent bound.
+// guest access. Numbered rooms also compare the connected peers out of band.
 internal sealed class SecureChannel : IDisposable
 {
     internal const int MaximumPayload = 4096;
-    internal const ushort ProtocolVersion = 4;
+    internal const ushort ProtocolVersion = 5;
     private readonly TcpClient client;
     private readonly SslStream stream;
     private readonly SemaphoreSlim writer = new(1, 1);
     private int disposed;
     public byte[] Session { get; }
+    internal string? VerificationCode { get; }
 
-    private SecureChannel(TcpClient client, SslStream stream, byte[] session)
-    { this.client = client; this.stream = stream; Session = session; }
+    private SecureChannel(TcpClient client, SslStream stream, byte[] session, string? verificationCode)
+    { this.client = client; this.stream = stream; Session = session; VerificationCode = verificationCode; }
 
-    public static async Task<SecureChannel> Connect(string host, int port, string invite, CancellationToken token)
+    public static async Task<SecureChannel> Connect(string host, int port, string invite, CancellationToken token, bool numbered = false)
     {
         var parsed = RoomIdentity.Parse(invite);
         var client = new TcpClient { NoDelay = true };
@@ -88,6 +95,7 @@ internal sealed class SecureChannel : IDisposable
             {
                 TargetHost = "th12coop.invalid",
                 EnabledSslProtocols = SslProtocols.Tls13,
+                AllowTlsResume = false,
                 CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
                 EncryptionPolicy = EncryptionPolicy.RequireEncryption,
             }, deadline.Token);
@@ -95,12 +103,20 @@ internal sealed class SecureChannel : IDisposable
             "T12L"u8.CopyTo(hello);
             BinaryPrimitives.WriteUInt16LittleEndian(hello.AsSpan(4), ProtocolVersion);
             hello[6] = 2; // Invited guest.
+            hello[7] = numbered ? (byte)1 : (byte)0;
             parsed.Capability.CopyTo(hello, 8);
-            await tls.WriteAsync(hello, deadline.Token);
+            try { await tls.WriteAsync(hello, deadline.Token); }
+            finally { CryptographicOperations.ZeroMemory(hello); }
+            // Commit the guest's random contribution and authenticated TLS pin before the
+            // host chooses its session challenge. A substituted pin cannot forward this commitment.
+            byte[] nonce = numbered ? RandomNumberGenerator.GetBytes(32) : [];
+            if (numbered) await tls.WriteAsync(CommitNonce(parsed.CertificateHash, nonce), deadline.Token);
             var acknowledgement = new byte[24];
             await tls.ReadExactlyAsync(acknowledgement, deadline.Token);
-            ValidateHello(acknowledgement, 1);
-            return new SecureChannel(client, tls, acknowledgement[8..24]);
+            ValidateHello(acknowledgement, 1, numbered);
+            var session = acknowledgement[8..24];
+            if (numbered) await tls.WriteAsync(nonce, deadline.Token);
+            return new SecureChannel(client, tls, session, numbered ? CompareCode(parsed.CertificateHash, session, nonce) : null);
         }
         catch (Exception error)
         {
@@ -112,7 +128,7 @@ internal sealed class SecureChannel : IDisposable
         finally { CryptographicOperations.ZeroMemory(parsed.Capability); }
     }
 
-    public static async Task<SecureChannel> Accept(TcpClient client, RoomIdentity identity, CancellationToken token)
+    public static async Task<SecureChannel> Accept(TcpClient client, RoomIdentity identity, CancellationToken token, bool numbered = false)
     {
         client.NoDelay = true;
         var tls = new SslStream(client.GetStream(), false);
@@ -125,22 +141,40 @@ internal sealed class SecureChannel : IDisposable
                 ServerCertificate = identity.Certificate,
                 ClientCertificateRequired = false,
                 EnabledSslProtocols = SslProtocols.Tls13,
+                AllowTlsResume = false,
                 CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
                 EncryptionPolicy = EncryptionPolicy.RequireEncryption,
             }, deadline.Token);
             var hello = new byte[40];
             await tls.ReadExactlyAsync(hello, deadline.Token);
-            ValidateHello(hello, 2);
-            if (!CryptographicOperations.FixedTimeEquals(hello.AsSpan(8, 32), identity.Capability))
-                throw new AuthenticationException("ルームコードが一致しません。");
+            try
+            {
+                ValidateHello(hello, 2, numbered);
+                if (!CryptographicOperations.FixedTimeEquals(hello.AsSpan(8, 32), identity.Capability))
+                    throw new AuthenticationException("ルームコードが一致しません。");
+            }
+            finally { CryptographicOperations.ZeroMemory(hello); }
+            byte[] commitment = numbered ? new byte[32] : [];
+            if (numbered) await tls.ReadExactlyAsync(commitment, deadline.Token);
             var session = RandomNumberGenerator.GetBytes(16);
             var acknowledgement = new byte[24];
             "T12L"u8.CopyTo(acknowledgement);
             BinaryPrimitives.WriteUInt16LittleEndian(acknowledgement.AsSpan(4), ProtocolVersion);
             acknowledgement[6] = 1; // Host.
+            acknowledgement[7] = numbered ? (byte)1 : (byte)0;
             session.CopyTo(acknowledgement, 8);
             await tls.WriteAsync(acknowledgement, deadline.Token);
-            return new SecureChannel(client, tls, session);
+            string? code = null;
+            if (numbered)
+            {
+                var nonce = new byte[32];
+                await tls.ReadExactlyAsync(nonce, deadline.Token);
+                var pin = SHA256.HashData(identity.Certificate.RawData);
+                if (!CryptographicOperations.FixedTimeEquals(commitment, CommitNonce(pin, nonce)))
+                    throw new AuthenticationException("相手の照合情報が一致しません。");
+                code = CompareCode(pin, session, nonce);
+            }
+            return new SecureChannel(client, tls, session, code);
         }
         catch (Exception error)
         {
@@ -151,10 +185,19 @@ internal sealed class SecureChannel : IDisposable
         }
     }
 
-    private static void ValidateHello(byte[] hello, byte role)
+    private static byte[] CommitNonce(byte[] pin, byte[] nonce) =>
+        SHA256.HashData([.."TH12L5 guest commitment"u8, ..pin, ..nonce]);
+
+    private static string CompareCode(byte[] pin, byte[] session, byte[] nonce)
+    {
+        var digest = SHA256.HashData([.."TH12L5 peer comparison"u8, ..pin, ..session, ..nonce]);
+        return Convert.ToHexString(digest.AsSpan(0, 4)).Insert(4, "-");
+    }
+
+    private static void ValidateHello(byte[] hello, byte role, bool numbered)
     {
         if (!hello.AsSpan(0, 4).SequenceEqual("T12L"u8) || BinaryPrimitives.ReadUInt16LittleEndian(hello.AsSpan(4)) != ProtocolVersion ||
-            hello[6] != role || hello[7] != 0) throw new AuthenticationException("通信バージョンまたは参加役割が一致しません。");
+            hello[6] != role || hello[7] != (numbered ? 1 : 0)) throw new AuthenticationException("通信バージョン・接続方式または参加役割が一致しません。");
     }
 
     public async Task Send(byte[] payload, CancellationToken token)

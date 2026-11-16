@@ -83,6 +83,15 @@ class PackageTests(unittest.TestCase):
             with self.assertRaisesRegex(verifier.InvalidPackage, "Required distribution inputs"):
                 verifier.expected_manifest()
 
+    def test_protocol_5_invite_is_kept_out_of_source_and_archive(self):
+        invite = b"T12L5." + b"A" * 86
+        self.assertRegex(invite, verifier.SECRET)
+        self.write("docs/reviewed.md", invite)
+        result = self.package()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Possible credential or room invite", result.stdout + result.stderr)
+        self.assertFalse(self.archive.exists())
+
     def test_missing_tracked_input_is_rejected(self):
         (self.root / "docs/reviewed.md").unlink()
         result = self.package()

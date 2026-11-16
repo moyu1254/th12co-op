@@ -6,6 +6,7 @@ namespace TH12Coop;
 
 internal sealed class LauncherForm : Form
 {
+    private enum PlayMode { Offline, NumberHost, NumberGuest, DirectHost, DirectGuest }
     private static readonly Color Background = Color.FromArgb(19, 22, 29), Surface = Color.FromArgb(30, 35, 45), Foreground = Color.FromArgb(236, 240, 247), Accent = Color.FromArgb(121, 205, 201);
     private readonly ComboBox mode = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox games = new() { DropDownStyle = ComboBoxStyle.DropDownList, Enabled = false };
@@ -14,7 +15,7 @@ internal sealed class LauncherForm : Form
     private InputSettings inputSettings = new();
     private bool inputSettingsReady;
     private readonly TextBox address = new() { Text = "127.0.0.1" };
-    private readonly Label addressLabel;
+    private readonly Label addressLabel, portLabel, codeLabel;
     private readonly NumericUpDown port = new() { Minimum = 1024, Maximum = 65535, Value = 3012 };
     private RoomIdentity room = RoomIdentity.Create();
     private readonly TextBox code = new() { MaxLength = 120 };
@@ -30,7 +31,9 @@ internal sealed class LauncherForm : Form
     private CancellationTokenSource? lifetime;
     private Task? running;
     private bool closing;
-    private int previousMode = -1;
+    private PlayMode? previousMode;
+    private TaskCompletionSource<bool>? confirmation;
+    private string joinNumber = "";
     private string joinAddress = "127.0.0.1";
     private string joinCode = "";
 
@@ -61,7 +64,8 @@ internal sealed class LauncherForm : Form
         games.Dock = browse.Dock = DockStyle.Fill;
         gameRow.Controls.Add(games, 1, 0); gameRow.Controls.Add(browse, 2, 0);
         content.Controls.Add(gameRow);
-        mode.Items.AddRange(["オフライン · このPCで2人", "オンライン · 部屋を作成", "オンライン · 部屋に参加"]);
+        mode.Items.AddRange(["オフライン · このPCで2人", "部屋番号 · 部屋を作成", "部屋番号 · 部屋に参加",
+            "直接接続 · 部屋を作成", "直接接続 · 部屋に参加"]);
         mode.SelectedIndex = 0;
         mode.Dock = DockStyle.Top;
         mode.Margin = new Padding(0, 0, 0, 18);
@@ -70,7 +74,7 @@ internal sealed class LauncherForm : Form
         network.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
         network.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         addressLabel = AddField(network, 0, "ホストIP", address);
-        AddField(network, 1, "ポート", port);
+        portLabel = AddField(network, 1, "ポート", port);
         var codeRow = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 3, Margin = Padding.Empty };
         codeRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         codeRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 66));
@@ -79,7 +83,7 @@ internal sealed class LauncherForm : Form
         code.Dock = DockStyle.Fill;
         generate.Dock = copy.Dock = DockStyle.Fill;
         codeRow.Controls.Add(code, 0, 0); codeRow.Controls.Add(copy, 1, 0); codeRow.Controls.Add(generate, 2, 0);
-        AddField(network, 2, "ルームコード", codeRow);
+        codeLabel = AddField(network, 2, "ルームコード", codeRow);
         delayLabel = AddField(network, 3, "遅延フレーム", delay);
         network.Margin = new Padding(0, 0, 0, 12);
         content.Controls.Add(network);
@@ -107,7 +111,11 @@ internal sealed class LauncherForm : Form
         mode.SelectedIndexChanged += (_, _) => SetMode();
         generate.Click += (_, _) => { room.Dispose(); room = RoomIdentity.Create(); code.Text = room.Invite; };
         copy.Click += (_, _) => Clipboard.SetText(code.Text);
-        start.Click += async (_, _) => await StartSession();
+        start.Click += async (_, _) =>
+        {
+            if (confirmation != null) confirmation.TrySetResult(true);
+            else await StartSession();
+        };
         browse.Click += async (_, _) => await BrowseGame();
         inputSettingsButton.Click += (_, _) => EditInputSettings();
         gameSettingsButton.Click += async (_, _) => await EditGameSettings();
@@ -199,27 +207,73 @@ internal sealed class LauncherForm : Form
 
     private void SetMode()
     {
-        if (previousMode == 2) { joinAddress = address.Text; joinCode = code.Text; }
-        var hosting = mode.SelectedIndex == 1;
-        var online = mode.SelectedIndex != 0;
-        network.Visible = online;
-        address.ReadOnly = mode.SelectedIndex != 2;
+        if (previousMode == PlayMode.DirectGuest) { joinAddress = address.Text; joinCode = code.Text; }
+        if (previousMode == PlayMode.NumberGuest) joinNumber = code.Text;
+        var selected = (PlayMode)mode.SelectedIndex;
+        var hosting = selected is PlayMode.NumberHost or PlayMode.DirectHost;
+        var direct = selected is PlayMode.DirectHost or PlayMode.DirectGuest;
+        network.Visible = selected != PlayMode.Offline;
+        address.Visible = addressLabel.Visible = port.Visible = portLabel.Visible = direct;
+        address.ReadOnly = selected != PlayMode.DirectGuest;
         addressLabel.Text = hosting ? "LAN IP" : "ホストIP";
-        if (hosting) address.Text = LanAddresses();
-        else if (mode.SelectedIndex == 2) address.Text = joinAddress;
+        if (selected == PlayMode.DirectHost) address.Text = LanAddresses();
+        else if (selected == PlayMode.DirectGuest) address.Text = joinAddress;
+        codeLabel.Text = direct ? "ルームコード" : "部屋番号";
+        code.MaxLength = direct ? 120 : 6;
         code.ReadOnly = hosting;
-        if (hosting) code.Text = room.Invite;
-        else if (mode.SelectedIndex == 2) code.Text = joinCode;
-        generate.Visible = copy.Visible = hosting;
+        code.Text = selected switch { PlayMode.DirectHost => room.Invite, PlayMode.DirectGuest => joinCode,
+            PlayMode.NumberGuest => joinNumber, _ => "" };
+        code.PlaceholderText = selected switch { PlayMode.NumberHost => "作成後に表示", PlayMode.NumberGuest => "6桁", _ => "" };
+        generate.Visible = selected == PlayMode.DirectHost;
+        copy.Visible = hosting;
+        copy.Enabled = selected == PlayMode.DirectHost;
+        var codeRow = (TableLayoutPanel)code.Parent!;
+        codeRow.ColumnStyles[1].Width = hosting ? 66 : 0;
+        codeRow.ColumnStyles[2].Width = generate.Visible ? 66 : 0;
         delay.Visible = delayLabel.Visible = hosting;
-        previousMode = mode.SelectedIndex;
-        start.Text = mode.SelectedIndex switch { 0 => "2人で開始", 1 => "部屋を作成", _ => "参加" };
-        networkHint.Text = mode.SelectedIndex switch
+        previousMode = selected;
+        start.Text = selected == PlayMode.Offline ? "2人で開始" : hosting ? "部屋を作成" : "参加";
+        networkHint.Text = selected switch
         {
-            0 => "自機を2機にして同じステージを進みます。メニューとポーズは1Pが操作します。",
-            1 => "相手に接続先IPとルームコードを伝えてください。双方のPCでゲームを実行します。",
-            _ => "2人とも同じバージョンのゲームとMODを使用してください。"
+            PlayMode.Offline => "自機を2機にして同じステージを進みます。メニューとポーズは1Pが操作します。",
+            PlayMode.DirectHost => "相手に接続先IP・ポート・ルームコードを伝えてください。",
+            PlayMode.NumberHost or PlayMode.NumberGuest when string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TH12COOP_RENDEZVOUS_URL")) =>
+                "合流サーバー未設定です。TH12COOP_RENDEZVOUS_URL を設定するか、直接接続を選んでください。",
+            _ => ""
         };
+        networkHint.Visible = networkHint.Text.Length != 0;
+    }
+
+    private void ShowRoomNumber(string number)
+    {
+        code.Text = number;
+        copy.Enabled = true;
+    }
+
+    private async Task<bool> ConfirmPeer(string phrase, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        SetStatus($"通話などで相手と照合してください： {phrase}");
+        copy.Enabled = false;
+        var choice = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var startLabel = start.Text;
+        confirmation = choice;
+        start.Text = "照合コードが一致";
+        start.Enabled = true;
+        stop.Text = "中止";
+        try
+        {
+            var matches = await choice.Task.WaitAsync(token);
+            SetStatus("相手の確認を待っています");
+            return matches;
+        }
+        finally
+        {
+            confirmation = null;
+            start.Enabled = false;
+            start.Text = startLabel;
+            stop.Text = "終了";
+        }
     }
 
     private static string LanAddresses()
@@ -252,21 +306,22 @@ internal sealed class LauncherForm : Form
         if (running != null) return;
         if (!inputSettingsReady) { SetStatus("入力設定を開き、割り当てを確認して保存してください。"); return; }
         if (games.SelectedItem is not GameChoice choice) { SetStatus("TH12のフォルダーを選択してください。"); return; }
-        var selected = mode.SelectedIndex;
+        var selected = (PlayMode)mode.SelectedIndex;
         var connectionCode = code.Text;
         var host = address.Text.Trim();
-        if (selected != 0)
+        if (selected is PlayMode.DirectHost or PlayMode.DirectGuest)
         {
             try { var parsed = RoomIdentity.Parse(connectionCode); System.Security.Cryptography.CryptographicOperations.ZeroMemory(parsed.Capability); }
             catch (ArgumentException e) { SetStatus(e.Message); return; }
-            if (selected == 2 && string.IsNullOrWhiteSpace(host)) { SetStatus("ホストIPを入力してください。"); return; }
+            if (selected == PlayMode.DirectGuest && string.IsNullOrWhiteSpace(host)) { SetStatus("ホストIPを入力してください。"); return; }
         }
+        if (selected == PlayMode.NumberGuest && !RendezvousClient.IsNumber(connectionCode))
+        { SetStatus("6桁の部屋番号を入力してください。"); return; }
         lifetime = new CancellationTokenSource();
         start.Enabled = mode.Enabled = games.Enabled = browse.Enabled = port.Enabled = generate.Enabled = delay.Enabled = false;
         inputSettingsButton.Enabled = gameSettingsButton.Enabled = false;
         address.ReadOnly = code.ReadOnly = true;
         stop.Enabled = true;
-        SetStatus(selected == 2 ? "接続しています" : "起動しています");
         try
         {
             running = RunSelected();
@@ -276,9 +331,14 @@ internal sealed class LauncherForm : Form
                 var directory = await GameLibrary.Prepare(choice, lifetime.Token);
                 switch (selected)
                 {
-                    case 0: await RunOffline(directory, lifetime.Token); break;
-                    case 1: await OnlineSession.Host(directory, (int)port.Value, room, (int)delay.Value, SetStatus, lifetime.Token); break;
-                    default: await OnlineSession.Join(directory, host, (int)port.Value, connectionCode, SetStatus, lifetime.Token); break;
+                    case PlayMode.Offline: await RunOffline(directory, lifetime.Token); break;
+                    case PlayMode.NumberHost:
+                        using (var numberedRoom = RoomIdentity.Create())
+                            await OnlineSession.HostNumber(directory, numberedRoom, (int)delay.Value, ShowRoomNumber, ConfirmPeer, SetStatus, lifetime.Token);
+                        break;
+                    case PlayMode.NumberGuest: await OnlineSession.JoinNumber(directory, connectionCode, ConfirmPeer, SetStatus, lifetime.Token); break;
+                    case PlayMode.DirectHost: await OnlineSession.Host(directory, (int)port.Value, room, (int)delay.Value, SetStatus, lifetime.Token); break;
+                    case PlayMode.DirectGuest: await OnlineSession.Join(directory, host, (int)port.Value, connectionCode, SetStatus, lifetime.Token); break;
                 }
             }
             await running;
@@ -287,12 +347,12 @@ internal sealed class LauncherForm : Form
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { SetStatus("終了しました"); }
         catch (Exception e)
         {
-            SetStatus(selected == 0 ? e.Message : "接続を終了しました。" + e.Message);
+            SetStatus(selected == PlayMode.Offline ? e.Message : "接続を終了しました。" + e.Message);
         }
         finally
         {
             lifetime.Dispose(); lifetime = null; running = null;
-            if (selected == 1) { room.Dispose(); room = RoomIdentity.Create(); }
+            if (selected == PlayMode.DirectHost) { room.Dispose(); room = RoomIdentity.Create(); }
             start.Enabled = mode.Enabled = games.Enabled = browse.Enabled = port.Enabled = generate.Enabled = delay.Enabled = true; stop.Enabled = false;
             inputSettingsButton.Enabled = gameSettingsButton.Enabled = true;
             SetMode();

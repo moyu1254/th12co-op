@@ -2,19 +2,29 @@
 
 非公開の招待で接続した2人が、それぞれのWindows 11 PCで正規のTH12を実行して操作入力を同期する。描画と音声は各PCで処理する。対応する本体は、検証済みの通常版1.00a・通常版1.00b・Steam版1.00bの3種類に限る。
 
-通信Protocol 4・協力Rules 5の実装を説明する。公開済みv0.2.0はRules 4。脅威と残るリスクは [脅威モデル](TH12CO-OP-threat-model.md)、実測した試験範囲は [検証結果](../verification/RESULTS.md) を参照。
+開発版は通信Protocol 5・協力Rules 6・IPC 1。配布済みv0.3.2はProtocol 4・Rules 6で、開発版とは接続できない。脅威と残るリスクは [脅威モデル](TH12CO-OP-threat-model.md)、実測した試験範囲は [検証結果](../verification/RESULTS.md) を参照。
 
 ## 通信と認証
 
-Protocol.csは.NETのSslStreamを使い、TLS 1.3を必須にする。通信バージョン4、協力ルール5、ローカルIPCの構造体バージョン1をそれぞれ検証する。
+Protocol.csは.NETのSslStreamを使い、TLS 1.3を必須にする。通信バージョン5、協力ルール6、ローカルIPCの構造体バージョン1をそれぞれ検証する。
 
-ホストはECDSA P-256の一時証明書と256-bitのランダムな参加鍵を作成する。T12L4招待には証明書全体のSHA-256と参加鍵を格納し、接続先のIP・ポートは別に指定する。ゲストは証明書のハッシュを固定時間で照合し、ホストはTLS内で参加鍵を固定時間で検証する。
+ホストはECDSA P-256の一時証明書と256-bitのランダムな参加鍵を作成する。T12L5招待には証明書全体のSHA-256と参加鍵を格納し、直接接続ではIP・ポートを別に指定し、番号方式では合流サーバーから取得する。ゲストは証明書のハッシュを固定時間で照合し、ホストはTLS内で参加鍵を固定時間で検証する。
 
 認証に成功すると128-bitのセッションIDを発行する。部屋の終了・中止・失敗後は証明書と参加鍵を更新し、旧バージョンの招待・通信・ルールは受理しない。
 
 TLSが鍵交換、方向別の鍵、暗号文の完全性を担当する。独自AES-GCMレコード層や0-RTTのゲーム開始処理は使用しない。自己署名証明書は招待のpinと一致する場合だけ受理する。[TLS 1.3](https://www.rfc-editor.org/rfc/rfc8446.html)、[TLS運用指針](https://www.rfc-editor.org/rfc/rfc9325.html)、[SslStreamの公式指針](https://learn.microsoft.com/en-us/dotnet/core/extensions/sslstream-best-practices)。
 
 SchannelでTLS 1.3を使用するため、オンラインの対象はWindows 11とする。平文への切替えはない。[Schannel対応表](https://learn.microsoft.com/en-us/windows/win32/secauthn/protocols-in-tls-ssl--schannel-ssp-)。この環境ではSchannelがEphemeralKeySetの鍵を取得できなかったため、証明書はUserKeySetを指定し、PersistKeySetを指定せずロードする。PFXバッファをゼロ化し、部屋終了時に証明書を破棄する。現在ユーザーのWindows鍵領域を使用し、信頼済み証明書へ登録する処理はない。秘密鍵がメモリだけに存在するとは保証しない。[鍵格納フラグ](https://learn.microsoft.com/en-us/dotnet/api/system.security.cryptography.x509certificates.x509keystorageflags?view=net-10.0)。
+
+## 部屋番号での認証（Protocol 5）
+
+ランチャーは信頼する運用者の HTTPS サービスへ外向きに接続する。6桁の番号は検索用で、256-bitの参加鍵の代わりではない。サービスは鍵を含む招待とホストの接続元IPを取得し、最初の問い合わせにだけ返す。サービスの証明書はOSで検証する。リダイレクトを追わず、候補は数値IPとTCP 3012に制限する。API、期限、運用条件は[合流サーバー](rendezvous.md)を参照。
+
+ゲストは取得した証明書pinと参加鍵を使い、ホストと直接TLS 1.3で接続する。両側のhelloで通信版・役割・接続方式を検証し、番号方式と手入力方式を混在させない。番号方式ではさらに、ゲストがランダムな256-bit nonceを生成し、pinとnonceのSHA-256コミットメントをTLS内で送る。ホストが128-bitのランダムなsession IDを返してからゲストがnonceを開示し、ホストがコミットメントと照合する。画面には別の用途ラベル・pin・session ID・nonceのSHA-256の先頭32 bitを、4桁ずつの16進数で表示する。pinに一致する証明書はTLSで検証済みで、照合値そのものは合流サーバーから受け取らない。
+
+40秒以内に両者が別経路で照合し、双方が同じTLS接続上で承認して初めてmanifestの交換へ進む。拒否・中止・期限切れ・切断ではゲームを起動しない。信頼する相手と直接共有した長い招待を使う方式では、合流サーバーに参加鍵やpinを開示しない。
+
+ホストは番号方式で待ち受ける間にだけ、IPv4のデフォルトゲートウェイに対してUPnP IGDでTCP 3012の660秒リースを要求する。既存の転送は利用者に任せる。受理・中止・期限切れの際に自分の転送を確認して解除し、プロセス異常終了時にはルーターのリース失効に依存する。ルーターへの照会と削除は原子的ではない。削除が確立済みTCPにも影響する機種を含め、実ルーターによる互換性は未検証。[IGD WANIPConnection](https://upnp.org/specs/gw/UPnP-gw-WANIPConnection-v1-Service.pdf)
 
 ## 実装上限
 
@@ -36,7 +46,7 @@ TCPの分割・結合を前提にReadExactlyAsyncで読む。不明種別、過�
 
 ## 開始合意とローカル実行
 
-OnlineProfile.ReadはローカルEXE・DAT・BGM・MOD DLL・共通オンライン設定をSHA-256で識別し、既知EXEと対応するDAT/BGMの組合せを検証する。既知本体は通常版1.00a・通常版1.00b・Steam版1.00bの3つに限定する。通常起動では認証後の選択メッセージを255（ゲーム内選択）とし、manifestのPlayersはnullにする。固定機体を渡す既存の診断呼出元との混在は拒否する。ホストはプロトコル版、ルール版、入力遅延、乱数seed、セッションID、既知build ID、資産と依存DLLの識別値をmanifestへ含め、ゲストはmanifest全体のハッシュへ応答する。OnlineProfile.ValidateRulesはルール版5以外をセッション準備前に拒否する。NetBridgeはIPC offset76へ5を書き、native lockstep.Initializeも5以外をフック設置前に拒否する。機体・装備、難易度・開始面は同期したゲームメニューで選択する。
+OnlineProfile.ReadはローカルEXE・DAT・BGM・MOD DLL・共通オンライン設定をSHA-256で識別し、既知EXEと対応するDAT/BGMの組合せを検証する。既知本体は通常版1.00a・通常版1.00b・Steam版1.00bの3つに限定する。通常起動では認証後の選択メッセージを255（ゲーム内選択）とし、manifestのPlayersはnullにする。固定機体を渡す既存の診断呼出元との混在は拒否する。ホストはプロトコル版、ルール版、入力遅延、乱数seed、セッションID、既知build ID、資産と依存DLLの識別値をmanifestへ含め、ゲストはmanifest全体のハッシュへ応答する。OnlineProfile.ValidateRulesはルール版6以外をセッション準備前に拒否する。NetBridgeはIPC offset76へ6を書き、native lockstep.Initializeも6以外をフック設置前に拒否する。機体・装備、難易度・開始面は同期したゲームメニューで選択する。
 
 通常版1.00bとSteam版1.00bは、正常起動後のゲームコードとデータが一致するため混在を許可する。比較前に双方のbuild IDとEXE hashを既知プロファイルへ照合し、そのうえで同じエンジン版・DAT・BGM・MOD DLL・設定・依存関係の識別値を要求する。build IDを名乗るだけで任意のEXEを許可する処理ではない。1.00aと1.00bの混在は拒否する。根拠は[本体比較](version-layout-audit.md)に記録する。
 
@@ -82,7 +92,7 @@ peer間のハッシュ一致は配布元の真正性を証明しない。ロー�
 
 ## 外部中継を追加する場合
 
-現在は直接TCPのみ。LAN、到達可能なIPv6、利用者が用意したVPNやポート転送を使う。暗号化とNAT越えは別の問題で、直接接続では相手にIPが分かる。外部サービスの作成・契約・デプロイ・ルーター変更は行っていない。
+Phase 1の[合流サーバー](rendezvous.md)は招待情報だけを渡す。ゲーム通信は両方式とも直接TCPで、接続相手にはIPが分かる。UDP・ICE・中継は未実装。外部サービスの契約・デプロイは行っていない。
 
 将来追加する場合の最小構成は、サポート中のASP.NET Coreで2接続を結ぶWSSサービスとする。公開一覧・DB・資産保存・任意宛先転送は設けない。部屋の有効期間を短くし、host/guest別の権限、接続数・転送量・TTLの上限を定める。秘密情報はURLやログへ含めない。中継を信用しない場合はWSSの順序付きStream内で同じpeer間TLSを使用し、外側のHTTPSだけをE2E暗号化とは呼ばない。
 
