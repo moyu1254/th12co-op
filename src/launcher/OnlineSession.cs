@@ -27,24 +27,26 @@ internal static class OnlineSession
             testNativePath, testInstance, testInput, observe, localCharacter);
 
     public static async Task HostNumber(string gameDirectory, RoomIdentity identity, int delay, Action<string> roomIssued,
-        Func<string, CancellationToken, Task<bool>> confirm, Action<string> status, CancellationToken token,
+        Func<string, bool, CancellationToken, Task<bool>> confirm, Action<string> status, CancellationToken token,
         RendezvousClient? service = null, string? testNativePath = null, bool testInstance = false, Func<uint, uint>? testInput = null,
         Action<LockstepPeer>? observe = null, Func<IPEndPoint, CancellationToken, Task<IAsyncDisposable?>>? openMapping = null, int? localCharacter = null)
     {
         using var configured = service == null ? RendezvousClient.Configured() : null;
         await using var transport = new NumberedTransport(service ?? configured!, openMapping);
-        await Play(gameDirectory, () => transport.Host(identity, roomIssued, status, token), confirm, 1, delay, status, token,
-            testNativePath, testInstance, testInput, observe, localCharacter);
+        await Play(gameDirectory, () => transport.Host(identity, roomIssued, status, token),
+            (code, ct) => confirm(code, transport.UsesRelay, ct), 1, delay, status, token, testNativePath, testInstance,
+            testInput, observe, localCharacter);
     }
 
-    public static async Task JoinNumber(string gameDirectory, string number, Func<string, CancellationToken, Task<bool>> confirm,
+    public static async Task JoinNumber(string gameDirectory, string number, Func<string, bool, CancellationToken, Task<bool>> confirm,
         Action<string> status, CancellationToken token, RendezvousClient? service = null, string? testNativePath = null,
         bool testInstance = false, Func<uint, uint>? testInput = null, Action<LockstepPeer>? observe = null, int? localCharacter = null)
     {
         using var configured = service == null ? RendezvousClient.Configured() : null;
         await using var transport = new NumberedTransport(service ?? configured!);
-        await Play(gameDirectory, () => transport.Join(number, status, token), confirm, 2, 0, status, token,
-            testNativePath, testInstance, testInput, observe, localCharacter);
+        await Play(gameDirectory, () => transport.Join(number, status, token),
+            (code, ct) => confirm(code, transport.UsesRelay, ct), 2, 0, status, token, testNativePath, testInstance,
+            testInput, observe, localCharacter);
     }
 
     private static TcpListener Listen(int port, IPAddress? address = null)

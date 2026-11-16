@@ -206,6 +206,8 @@ internal static class RelayPathTests
             var connecting = guest.Join(await issued.Task.WaitAsync(ct), _ => { }, ct);
             using var guestPeer = await connecting;
             using var hostPeer = await accepting;
+            if (!host.UsesRelay || !guest.UsesRelay)
+                throw new InvalidOperationException("Both peers must confirm WSS after direct failure");
             if (observedHost.Upgrades != 1 || observedGuest.Upgrades != 1 || observedHost.Rewritten == 0 ||
                 (!missingHostProof && observedGuest.Rewritten == 0) ||
                 guestPeer.VerificationCode == null || guestPeer.VerificationCode != hostPeer.VerificationCode)

@@ -29,7 +29,7 @@
 
 ## リリースノート
 
-[v0.3.2](releases/v0.3.2.md) · [v0.3.1](releases/v0.3.1.md) · [v0.3.0](releases/v0.3.0.md) · [v0.2.0](releases/v0.2.0.md) · [v0.1.1](releases/v0.1.1.md) · [v0.1.0](releases/v0.1.0.md)
+[v0.4.0-rc.1（配布候補）](releases/v0.4.0-rc.1.md) · [v0.3.2](releases/v0.3.2.md) · [v0.3.1](releases/v0.3.1.md) · [v0.3.0](releases/v0.3.0.md) · [v0.2.0](releases/v0.2.0.md) · [v0.1.1](releases/v0.1.1.md) · [v0.1.0](releases/v0.1.0.md)
 
 ## 過去の監査記録
 

@@ -89,7 +89,11 @@ internal static class Program
                 async Task Start(bool isHost, Action<string> status, CancellationToken token,
                     Func<uint, uint> input, Action<LockstepPeer> observe, int? character)
                 {
-                    Task<bool> Confirm(string phrase, CancellationToken ct) => confirmation.Compare(isHost, phrase, ct);
+                    Task<bool> Confirm(string phrase, bool usesRelay, CancellationToken ct)
+                    {
+                        Check(usesRelay == relayGame, "Incorrect route at peer confirmation");
+                        return confirmation.Compare(isHost, phrase, ct);
+                    }
                     void Observe(LockstepPeer peer)
                     {
                         Check(confirmation.BothConfirmed, "Game preparation preceded peer confirmation");
@@ -115,6 +119,7 @@ internal static class Program
                 {
                     await using var transport = new NumberedTransport(service, mapping.Open);
                     using var peer = await transport.Host(identity, issued.SetResult, _ => { }, token);
+                    Check(!transport.UsesRelay, "Host must confirm direct QUIC");
                     await OnlineSession.ConfirmPeer(peer, (phrase, ct) => confirmation.Compare(true, phrase, ct), token);
                     Check((await peer.Receive(token)).SequenceEqual(new byte[] { 42 }), "Peer data after confirmation");
                     await peer.Send([43], token);
@@ -126,6 +131,7 @@ internal static class Program
                     if (await Task.WhenAny(accept, issued.Task) == accept) await accept;
                     await using var transport = new NumberedTransport(guestService);
                     using var guestPeer = await transport.Join(await issued.Task.WaitAsync(token), _ => { }, token);
+                    Check(!transport.UsesRelay, "Guest must confirm direct QUIC");
                     await OnlineSession.ConfirmPeer(guestPeer, (phrase, ct) => confirmation.Compare(false, phrase, ct), token);
                     await guestPeer.Send([42], token);
                     Check((await guestPeer.Receive(token)).SequenceEqual(new byte[] { 43 }), "QUIC duplex");

@@ -12,6 +12,7 @@ internal sealed class NumberedTransport(RendezvousClient service,
 {
     private UdpIcePeer? ice;
     private IceQuicConnection? quic;
+    internal bool UsesRelay { get; private set; }
 
     internal async Task<SecureChannel> Host(RoomIdentity identity, Action<string> roomIssued,
         Action<string> status, CancellationToken token)
@@ -97,7 +98,9 @@ internal sealed class NumberedTransport(RendezvousClient service,
         await ReleaseDirect();
         token.ThrowIfCancellationRequested();
         status("直接接続できないため、中継に接続しています");
-        return await relay();
+        var relayedChannel = await relay();
+        UsesRelay = true;
+        return relayedChannel;
     }
 
     private async ValueTask ReleaseDirect()
