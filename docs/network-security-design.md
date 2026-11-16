@@ -2,13 +2,13 @@
 
 非公開の招待で接続した2人が、それぞれのWindows 11 PCで正規のTH12を実行して操作入力を同期する。描画と音声は各PCで処理する。対応する本体は、検証済みの通常版1.00a・通常版1.00b・Steam版1.00bの3種類に限る。
 
-開発版は通信Protocol 5・協力Rules 6・IPC 1。配布済みv0.3.2はProtocol 4・Rules 6で、開発版とは接続できない。脅威と残るリスクは [脅威モデル](TH12CO-OP-threat-model.md)、実測した試験範囲は [検証結果](../verification/RESULTS.md) を参照。
+開発版は通信Protocol 6・協力Rules 6・IPC 1。配布済みv0.3.2はProtocol 4・Rules 6で、開発版とは接続できない。脅威と残るリスクは [脅威モデル](TH12CO-OP-threat-model.md)、実測した試験範囲は [検証結果](../verification/RESULTS.md) を参照。
 
 ## 通信と認証
 
-Protocol.csは.NETのSslStreamを使い、TLS 1.3を必須にする。通信バージョン5、協力ルール6、ローカルIPCの構造体バージョン1をそれぞれ検証する。
+.NET の TLS 1.3 を必須とし、手入力方式は TCP と SslStream、番号方式は UDP と QUIC を使う。接続後の参加認証とレコード処理は共通。通信バージョン6、協力ルール6、ローカルIPCの構造体バージョン1をそれぞれ検証する。
 
-ホストはECDSA P-256の一時証明書と256-bitのランダムな参加鍵を作成する。T12L5招待には証明書全体のSHA-256と参加鍵を格納し、直接接続ではIP・ポートを別に指定し、番号方式では合流サーバーから取得する。ゲストは証明書のハッシュを固定時間で照合し、ホストはTLS内で参加鍵を固定時間で検証する。
+ホストはECDSA P-256の一時証明書と256-bitのランダムな参加鍵を作成する。T12L6招待には証明書全体のSHA-256と参加鍵を格納し、直接接続ではIP・ポートを別に指定し、番号方式では合流サーバーから取得する。ゲストは証明書のハッシュを固定時間で照合し、ホストはTLS内で参加鍵を固定時間で検証する。
 
 認証に成功すると128-bitのセッションIDを発行する。部屋の終了・中止・失敗後は証明書と参加鍵を更新し、旧バージョンの招待・通信・ルールは受理しない。
 
@@ -16,24 +16,33 @@ TLSが鍵交換、方向別の鍵、暗号文の完全性を担当する。独�
 
 SchannelでTLS 1.3を使用するため、オンラインの対象はWindows 11とする。平文への切替えはない。[Schannel対応表](https://learn.microsoft.com/en-us/windows/win32/secauthn/protocols-in-tls-ssl--schannel-ssp-)。この環境ではSchannelがEphemeralKeySetの鍵を取得できなかったため、証明書はUserKeySetを指定し、PersistKeySetを指定せずロードする。PFXバッファをゼロ化し、部屋終了時に証明書を破棄する。現在ユーザーのWindows鍵領域を使用し、信頼済み証明書へ登録する処理はない。秘密鍵がメモリだけに存在するとは保証しない。[鍵格納フラグ](https://learn.microsoft.com/en-us/dotnet/api/system.security.cryptography.x509certificates.x509keystorageflags?view=net-10.0)。
 
-## 部屋番号での認証（Protocol 5）
+## 部屋番号での認証（Protocol 6）
 
-ランチャーは信頼する運用者の HTTPS サービスへ外向きに接続する。6桁の番号は検索用で、256-bitの参加鍵の代わりではない。サービスは鍵を含む招待とホストの接続元IPを取得し、最初の問い合わせにだけ返す。サービスの証明書はOSで検証する。リダイレクトを追わず、候補は数値IPとTCP 3012に制限する。API、期限、運用条件は[合流サーバー](rendezvous.md)を参照。
+ランチャーは信頼する運用者の HTTPS サービスへ外向きに接続する。6桁の番号の用途は検索で、ホストは別に256-bit の参加鍵を発行する。ホストが登録した招待を一人のゲストに返し、両者の ICE 資格情報と候補を交換する。HTTPS は OS の信頼ストアで検証し、リダイレクトは追わない。[合流サーバーの API、期限、IP の確認方法](rendezvous.md)
 
-ゲストは取得した証明書pinと参加鍵を使い、ホストと直接TLS 1.3で接続する。両側のhelloで通信版・役割・接続方式を検証し、番号方式と手入力方式を混在させない。番号方式ではさらに、ゲストがランダムな256-bit nonceを生成し、pinとnonceのSHA-256コミットメントをTLS内で送る。ホストが128-bitのランダムなsession IDを返してからゲストがnonceを開示し、ホストがコミットメントと照合する。画面には別の用途ラベル・pin・session ID・nonceのSHA-256の先頭32 bitを、4桁ずつの16進数で表示する。pinに一致する証明書はTLSで検証済みで、照合値そのものは合流サーバーから受け取らない。
+ゲストは取得した証明書pinと参加鍵を使い、ホストの QUIC/TLS 1.3 接続を認証する。両側のhelloで通信版・役割・接続方式を検証し、番号方式と手入力方式を混在させない。番号方式ではさらに、ゲストがランダムな256-bit nonceを生成し、pinとnonceのSHA-256コミットメントをTLS内で送る。ホストが128-bitのランダムなsession IDを返してからゲストがnonceを開示し、ホストがコミットメントと照合する。画面には別の用途ラベル・pin・session ID・nonceのSHA-256の先頭32 bitを、4桁ずつの16進数で表示する。pinに一致する証明書はTLSで検証済みで、照合値そのものは合流サーバーから受け取らない。
 
-ゲストが招待を取得した時点でサーバーは番号を消費する。ホストはゲストの認証後、合流サーバーへの通信を待たずに待受を終了し、UPnPの解除処理を経て照合コードを表示する。ゲストの受理前にホストが待機を取り消した場合は、所有者トークンで番号を取り消す。
+ゲストが自分の候補を添えて招待を取得すると、番号は他の参加者には使えなくなる。ホストは所有者トークンで参加通知を受け、UDP ソケットを開いて候補を返す。ホストは応答を登録するまで同じ通知を再取得できる。ゲストは参加時に得た専用トークンで同じ応答を再取得できる。応答の保持は登録後90秒と元の部屋の期限の早い方まで。ホストが応答前に中止した場合は所有者トークンで取り消す。
 
 40秒以内に両者が別経路で照合し、双方が同じTLS接続上で承認して初めてmanifestの交換へ進む。「一致しない」を選ぶと同じTLS接続で相手にも拒否が届き、両側で照合を終了する。期限切れ・切断でもゲームを起動しない。信頼する相手と直接共有した長い招待を使う方式では、合流サーバーに参加鍵やpinを開示しない。
 
-ホストは番号方式で待ち受ける間にだけ、IPv4のデフォルトゲートウェイに対してUPnP IGDでTCP 3012の660秒リースを要求する。既存の転送は利用者に任せる。受理・中止・期限切れの際に自分の転送を確認して解除し、プロセス異常終了時にはルーターのリース失効に依存する。ルーターへの照会と削除は原子的ではない。削除が確立済みTCPにも影響する機種を含め、実ルーターによる互換性は未検証。[IGD WANIPConnection](https://upnp.org/specs/gw/UPnP-gw-WANIPConnection-v1-Service.pdf)
+## 番号方式の UDP 経路（Phase 2）
+
+1. 両者はゲーム通信に使うソケットから、設定済みの合流ホスト（UDP 3478）へ STUN Binding 要求を送る。ローカルの公開アドレス、観測された外側アドレス／ポート、ホストで取得できた UPnP 転送が候補になる。各 IP ファミリー最大2候補。合流サーバーは HTTPS 接続で確認できた IP に限って相手に渡す。
+2. Keryx ICE の認証付き STUN チェックで双方向に UDP を送る。ホストが controlling、ゲストが controlled。両者が候補を持つ IPv6 に350 ms の先行時間を与え、IPv4 でも到達性を確認する。チェック中に新しいポートが見つかった場合も、相手が HTTPS で確認した IP の範囲内で候補を作る。他の IP からの要求を破棄しても、正規の候補のチェックは続く。[ICE (RFC 8445)](https://www.rfc-editor.org/rfc/rfc8445)
+3. QUIC の TLS 1.3 でホスト証明書を pin し、双方向の順序付きストリーム1本で参加鍵・照合・manifest・lockstep レコードを運ぶ。再送と順序制御は QUIC が担当する。ALPN は th12coop/6。ゲーム入力は両者の照合を終えてから送る。[QUIC の TLS](https://www.rfc-editor.org/rfc/rfc9001)
+4. .NET の MsQuic は ICE の既存ソケットを引き取れないため、各 PC 内のループバックと選定済み ICE 経路の間で QUIC データグラムを渡す。これにより STUN、ホールパンチング、ゲーム中の送信元ポートが変わらない。ICE は送信元の IP とポートが選定済みペアと一致するデータだけを QUIC に渡す。受信待ちは64データグラムまでで、あふれた分の再送は QUIC が扱う。[.NET の QUIC](https://learn.microsoft.com/en-us/dotnet/fundamentals/networking/quic/quic-overview)
+5. QUIC は10秒間隔の keep-alive で入力待ち中の接続を維持する。正常終了では最後のレコードを送ったあとストリームの送信を完了し、期限内に確認を待って接続を閉じる。ICE とループバック間の転送が失敗した場合は、処理中のレコード読み書きにもその原因を返す。
+
+IPv4 のホストはデフォルトゲートウェイへ、確保した UDP ポートの UPnP IGD 転送を要求する。リースは660秒。照合中・ゲーム中も転送を維持し、5分ごとに所有を確認して更新する。終了・失敗時は所有ラベル・内部 IP・ポートが一致したものを解除する。異常終了時はルーターのリース失効に依存する。ルーターへの照会と更新・削除は原子的ではない。実機での挙動は未検証。[IGD WANIPConnection](https://upnp.org/specs/gw/UPnP-gw-WANIPConnection-v1-Service.pdf)
 
 ## 実装上限
 
 | 対象 | 制約 | 実装 |
 |---|---|---|
-| 認証前 | 同時8件、TLS＋参加認証4秒、認証済み待機1件 | OnlineSession.AcceptGuest |
-| クライアント接続 | TCP＋TLS＋認証応答で10秒 | SecureChannel.Connect |
+| 手入力・認証前 | 同時8件、TLS＋参加認証4秒、認証済み待機1件 | OnlineSession.AcceptGuest |
+| 手入力・クライアント接続 | TCP＋TLS＋認証応答で10秒 | SecureChannel.Connect |
+| 番号方式 | ローカル候補収集15秒、参加後のホスト応答待ち90秒、ICE 接続12秒、QUIC と参加認証10秒。各段階に独立した期限を設け、利用者の中止は全段階に伝える | NumberedTransport、UdpIcePeer、IceQuicConnection |
 | 本文 | 1〜4096 bytes。範囲外は本文配列の確保前に拒否 | SecureChannel.Receive |
 | 通信期限 | 送信5秒、長さ＋本文の受信40秒。送信1担当・受信1担当 | SecureChannel |
 | 入力／digest | 20／44 bytes、役割・版・session・連続frame・入力bitを検証 | LockstepPeer.AcceptRecord |
@@ -44,7 +53,7 @@ SchannelでTLS 1.3を使用するため、オンラインの対象はWindows 11�
 | 通常進行 | 入力待ち・engine要求待ち35秒、native barrier40秒。loader待ち30秒＋通信余裕 | LockstepPeer、NetBridge、lockstep.h |
 | 起動／終了 | 準備全体120秒、native最初の待機125秒、所有ゲームの終了待ち5秒 | LockstepPeer.Run、GameSession |
 
-TCPの分割・結合を前提にReadExactlyAsyncで読む。不明種別、過大本文、重複・過去・過剰に未来のframeを拒否する。pingで必要入力の期限を延長しない。上限はアプリ内の消費を制限するもので、回線DDoSや悪意ある参加者自身の切断を防ぐ保証ではない。
+両方式ともストリームの分割・結合を前提にReadExactlyAsyncで読む。不明種別、過大本文、重複・過去・過剰に未来のframeを拒否する。pingで必要入力の期限を延長しない。上限はアプリ内の消費を制限するもので、回線DDoSや悪意ある参加者自身の切断を防ぐ保証ではない。
 
 ## 開始合意とローカル実行
 
@@ -94,9 +103,9 @@ peer間のハッシュ一致は配布元の真正性を証明しない。ロー�
 
 ## 外部中継を追加する場合
 
-Phase 1の[合流サーバー](rendezvous.md)は招待情報だけを渡す。ゲーム通信は両方式とも直接TCPで、接続相手にはIPが分かる。UDP・ICE・中継は未実装。外部サービスの契約・デプロイは行っていない。
+[合流サーバー](rendezvous.md)は招待・接続候補を渡す。ゲーム通信は番号方式では UDP/QUIC、手入力では TCP/TLS で、接続相手には IP が分かる。中継フォールバック（Phase 3）は未実装。外部サービスの契約・デプロイは行っていない。
 
 将来追加する場合の最小構成は、サポート中のASP.NET Coreで2接続を結ぶWSSサービスとする。公開一覧・DB・資産保存・任意宛先転送は設けない。部屋の有効期間を短くし、host/guest別の権限、接続数・転送量・TTLの上限を定める。秘密情報はURLやログへ含めない。中継を信用しない場合はWSSの順序付きStream内で同じpeer間TLSを使用し、外側のHTTPSだけをE2E暗号化とは呼ばない。
 
-外側WSSの断片合算上限と内側アプリの4KiB上限を分け、無限キュー・圧縮を禁止する。各接続は送信1つ・受信1つとする。[WebSocketの制約](https://learn.microsoft.com/en-us/dotnet/api/system.net.websockets.clientwebsocket?view=net-10.0)に従う。自動NAT探索を追加するなら既存の [ICE](https://www.rfc-editor.org/rfc/rfc8445.html)・[TURN](https://www.rfc-editor.org/rfc/rfc8656.html) を用い、運用者・ログ保持・パッチ担当・料金上限を別途決める。この節は将来の設計であり、現在の実装・検証範囲には含めない。
+外側WSSの断片合算上限と内側アプリの4KiB上限を分け、無限キュー・圧縮を禁止する。各接続は送信1つ・受信1つとする。[WebSocketの制約](https://learn.microsoft.com/en-us/dotnet/api/system.net.websockets.clientwebsocket?view=net-10.0)に従う。既存の ICE に [TURN](https://www.rfc-editor.org/rfc/rfc8656.html) を加える場合も、運用者・ログ保持・パッチ担当・料金上限を別途決める。この節は将来の設計であり、現在の実装・検証範囲には含めない。
 

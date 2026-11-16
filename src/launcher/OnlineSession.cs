@@ -29,16 +29,12 @@ internal static class OnlineSession
     public static async Task HostNumber(string gameDirectory, RoomIdentity identity, int delay, Action<string> roomIssued,
         Func<string, CancellationToken, Task<bool>> confirm, Action<string> status, CancellationToken token,
         RendezvousClient? service = null, string? testNativePath = null, bool testInstance = false, Func<uint, uint>? testInput = null,
-        Action<LockstepPeer>? observe = null, Func<CancellationToken, Task<IAsyncDisposable?>>? openMapping = null, int? localCharacter = null)
+        Action<LockstepPeer>? observe = null, Func<IPEndPoint, CancellationToken, Task<IAsyncDisposable?>>? openMapping = null, int? localCharacter = null)
     {
         using var configured = service == null ? RendezvousClient.Configured() : null;
-        async Task<SecureChannel> Connect()
-        {
-            using var listener = Listen(RendezvousClient.GamePort, testInstance ? IPAddress.Loopback : null);
-            return await AcceptNumber(listener, service ?? configured!, identity, roomIssued, status, token,
-                openMapping ?? (async ct => await UpnpPortMapping.TryOpenAsync(ct)));
-        }
-        await Play(gameDirectory, Connect, confirm, 1, delay, status, token, testNativePath, testInstance, testInput, observe, localCharacter);
+        await using var transport = new NumberedTransport(service ?? configured!, openMapping);
+        await Play(gameDirectory, () => transport.Host(identity, roomIssued, status, token), confirm, 1, delay, status, token,
+            testNativePath, testInstance, testInput, observe, localCharacter);
     }
 
     public static async Task JoinNumber(string gameDirectory, string number, Func<string, CancellationToken, Task<bool>> confirm,
@@ -46,15 +42,9 @@ internal static class OnlineSession
         bool testInstance = false, Func<uint, uint>? testInput = null, Action<LockstepPeer>? observe = null, int? localCharacter = null)
     {
         using var configured = service == null ? RendezvousClient.Configured() : null;
-        async Task<SecureChannel> Connect()
-        {
-            var candidate = await (service ?? configured!).Join(number, token);
-            status("ホストに接続しています");
-            try { return await SecureChannel.Connect(candidate.Address, candidate.Port, candidate.Invite, token, numbered: true); }
-            catch (Exception e) when (e is SocketException or TimeoutException)
-            { throw new IOException("ホストに直接接続できません。TCP 3012 のポート転送とファイアウォールを確認し、新しい部屋番号で再試行してください。", e); }
-        }
-        await Play(gameDirectory, Connect, confirm, 2, 0, status, token, testNativePath, testInstance, testInput, observe, localCharacter);
+        await using var transport = new NumberedTransport(service ?? configured!);
+        await Play(gameDirectory, () => transport.Join(number, status, token), confirm, 2, 0, status, token,
+            testNativePath, testInstance, testInput, observe, localCharacter);
     }
 
     private static TcpListener Listen(int port, IPAddress? address = null)
@@ -85,43 +75,6 @@ internal static class OnlineSession
         var peer = new LockstepPeer(channel, manifest, role);
         observe?.Invoke(peer);
         await peer.Run(profile, testInstance, testInput, status, token);
-    }
-
-    internal static async Task<SecureChannel> AcceptNumber(TcpListener listener, RendezvousClient service, RoomIdentity identity,
-        Action<string> roomIssued, Action<string> status, CancellationToken token, Func<CancellationToken, Task<IAsyncDisposable?>> openMapping)
-    {
-        SecureChannel? accepted = null;
-        RendezvousClient.Registration? room = null;
-        try
-        {
-            status("部屋を作成しています");
-            await using var mapping = await openMapping(token);
-            using var wait = CancellationTokenSource.CreateLinkedTokenSource(token);
-            wait.CancelAfter(TimeSpan.FromMinutes(10));
-            try
-            {
-                room = await service.Create(identity.Invite, wait.Token);
-                roomIssued(room.Number);
-                status(mapping != null ? "ゲストの接続を待っています" :
-                    "接続待ち · 外部から接続できない場合は TCP 3012 のポート転送を設定してください");
-                accepted = await AcceptGuest(listener, identity, wait.Token, numbered: true);
-                return accepted;
-            }
-            catch (OperationCanceledException) when (wait.IsCancellationRequested && !token.IsCancellationRequested)
-            { throw new TimeoutException("部屋番号が期限切れになりました。新しい部屋を作成してください。"); }
-            finally { listener.Stop(); }
-        }
-        catch
-        {
-            // Join already consumed the number before returning the guest's invitation.
-            if (accepted != null) accepted.Dispose();
-            else if (room != null)
-            {
-                try { await service.Close(room); }
-                catch (IOException) { status("合流サーバーに終了を通知できませんでした。部屋番号は10分で失効します。"); }
-            }
-            throw;
-        }
     }
 
     internal static async Task ConfirmPeer(SecureChannel channel, Func<string, CancellationToken, Task<bool>> confirm, CancellationToken token)

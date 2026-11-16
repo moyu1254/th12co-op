@@ -24,6 +24,8 @@ SOURCE_DIRS = ("src", "scripts", "docs", "licenses", "profiles", "verification")
 REQUIRED_FILES = {"dist/TH12Coop.exe", "dist/TH12Coop.dll", "dist/th12coop-native.dll", "dist/injector.exe",
                   "dist/th12-online.cfg", "dist/coreclr.dll", "dist/TH12Coop.runtimeconfig.json",
                   "dist/TH12Coop.deps.json", "profiles/th12-online.cfg"}
+REQUIRED_FILES.update({"dist/Keryx.Core.dll", "dist/Keryx.Ice.dll", "dist/Keryx.Stun.dll",
+                       "dist/Keryx.Turn.dll", "dist/msquic.dll", "dist/licenses/Keryx-LICENSE.txt"})
 EXCLUDED = {"bin", "obj", "__pycache__"}
 MAX_ENTRIES, MAX_FILE, MAX_TOTAL, MAX_ARCHIVE = 20000, 64 << 20, 1 << 30, 512 << 20
 CONFIG_HASH = "9d3016fdf6f7c1395a399de7de0081b0fa766787b4e0c472a2564ca713833a8f"

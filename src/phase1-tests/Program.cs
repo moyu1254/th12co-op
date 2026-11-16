@@ -17,7 +17,7 @@ internal static class Program
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
-            if (request.RequestUri?.AbsolutePath == "/v1/rooms/close") Interlocked.Increment(ref requests);
+            if (request.RequestUri?.AbsolutePath == "/v2/rooms/close") Interlocked.Increment(ref requests);
             return base.SendAsync(request, token);
         }
     }
@@ -27,10 +27,10 @@ internal static class Program
         internal bool Opened { get; private set; }
         internal bool Closed { get; private set; }
 
-        internal Task<IAsyncDisposable?> Open(CancellationToken token)
+        internal Task<IAsyncDisposable?> Open(IPEndPoint endpoint, CancellationToken token)
         {
             token.ThrowIfCancellationRequested();
-            Check(!Opened, "Unexpected second mapping");
+            Check(!Opened && endpoint.Port >= 1024, "Unexpected mapping endpoint");
             Opened = true;
             return Task.FromResult<IAsyncDisposable?>(this);
         }
@@ -47,7 +47,7 @@ internal static class Program
         private readonly TaskCompletionSource<string> guest = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal async Task<bool> Compare(bool isHost, string phrase, CancellationToken token)
         {
-            if (isHost) Check(mapping.Opened && mapping.Closed, "Mapping was open at host confirmation");
+            if (isHost) Check(mapping.Opened && !mapping.Closed, "UDP mapping must last through confirmation");
             Check(phrase.Length != 0 && (isHost ? host : guest).TrySetResult(phrase), "Missing or duplicate confirmation");
             var other = await (isHost ? guest : host).Task.WaitAsync(token);
             Check(other == phrase, "Peer confirmation mismatch");
@@ -100,7 +100,7 @@ internal static class Program
                     Task<bool> Confirm(string phrase, CancellationToken ct) => confirmation.Compare(isHost, phrase, ct);
                     void Observe(LockstepPeer peer)
                     {
-                        Check(mapping.Closed && confirmation.BothConfirmed, "Game preparation preceded confirmation");
+                        Check(!mapping.Closed && confirmation.BothConfirmed, "Game preparation preceded confirmation or lost UDP mapping");
                         observe(peer);
                     }
                     if (isHost)
@@ -119,23 +119,25 @@ internal static class Program
             {
                 using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(25));
                 var token = lifetime.Token;
-                using var listener = new TcpListener(IPAddress.Loopback, RendezvousClient.GamePort);
-                listener.Start();
                 async Task Host()
                 {
-                    using var peer = await OnlineSession.AcceptNumber(listener, service, identity, issued.SetResult,
-                        _ => { }, token, mapping.Open);
+                    await using var transport = new NumberedTransport(service, mapping.Open);
+                    using var peer = await transport.Host(identity, issued.SetResult, _ => { }, token);
                     await OnlineSession.ConfirmPeer(peer, (phrase, ct) => confirmation.Compare(true, phrase, ct), token);
                     Check((await peer.Receive(token)).SequenceEqual(new byte[] { 42 }), "Peer data after confirmation");
+                    await peer.Send([43], token);
+                    Check((await peer.Receive(token)).SequenceEqual(new byte[] { 44 }), "Peer round trip");
                 }
                 var accept = Host();
                 try
                 {
                     if (await Task.WhenAny(accept, issued.Task) == accept) await accept;
-                    var candidate = await service.Join(await issued.Task.WaitAsync(token), token);
-                    using var guestPeer = await SecureChannel.Connect(candidate.Address, candidate.Port, candidate.Invite, token, numbered: true);
+                    await using var transport = new NumberedTransport(service);
+                    using var guestPeer = await transport.Join(await issued.Task.WaitAsync(token), _ => { }, token);
                     await OnlineSession.ConfirmPeer(guestPeer, (phrase, ct) => confirmation.Compare(false, phrase, ct), token);
                     await guestPeer.Send([42], token);
+                    Check((await guestPeer.Receive(token)).SequenceEqual(new byte[] { 43 }), "QUIC duplex");
+                    await guestPeer.Send([44], token);
                     await accept;
                 }
                 finally
@@ -146,35 +148,71 @@ internal static class Program
             }
             Check(confirmation.BothConfirmed && mapping.Closed, "Missing waiting cleanup or peer confirmation");
             Check(closes.Requests == 0, "An authenticated guest's claim caused another request to close the room");
-            using var auditClient = new HttpClient(TestHandler(cert)) { BaseAddress = url, Timeout = TimeSpan.FromSeconds(5) };
-            using var second = await auditClient.PostAsJsonAsync("/v1/rooms/join", new { number = await issued.Task });
-            Check(second.StatusCode == HttpStatusCode.NotFound, "Room remained joinable");
             if (games == null)
             {
-                await CancelWaitingHost(service, auditClient);
+                await CancelWaitingHost(service);
                 Check(closes.Requests == 1, "Cancelling an unclaimed room must send one close request");
+                using var tests = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+                await Task.WhenAll(DelayedHostOfferProcessing(service, tests.Token),
+                    QuicIdentityTests.Run(tests.Token), UdpPathTests.Run(tests.Token));
             }
-            Console.WriteLine(games == null ? "PASS numbered HTTPS/TLS loopback, confirmation and cleanup" :
+            Console.WriteLine(games == null ? "PASS numbered HTTPS/ICE/QUIC loopback, confirmation and cleanup" :
                 "PASS numbered loopback game, lockstep, quiet operation and cleanup");
             return 0;
         }
         finally { await app.StopAsync(); }
     }
 
-    private static async Task CancelWaitingHost(RendezvousClient service, HttpClient auditClient)
+    private static async Task DelayedHostOfferProcessing(RendezvousClient service, CancellationToken token)
     {
         using var identity = RoomIdentity.Create();
-        using var listener = new TcpListener(IPAddress.Loopback, RendezvousClient.GamePort);
-        listener.Start();
+        var room = await service.Create(identity.Invite, token);
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        async Task Guest()
+        {
+            await using var transport = new NumberedTransport(service);
+            using var channel = await transport.Join(room.Number, _ => { }, stop.Token);
+            await channel.Send([61], stop.Token);
+            Check((await channel.Receive(stop.Token)).SequenceEqual(new byte[] { 62 }), "Late host reply");
+        }
+        var guest = Guest();
+        try
+        {
+            var offer = await service.WaitOffer(room, stop.Token);
+            // The old deadline started before the guest even gathered candidates.
+            // Let the host resume after it, then exercise both real transport handshakes.
+            var resume = Task.Delay(TimeSpan.FromSeconds(46), stop.Token);
+            if (await Task.WhenAny(guest, resume) == guest) await guest;
+            await resume;
+            await using var ice = await UdpIcePeer.GatherAsync(true, service.Origin, stop.Token);
+            await service.Answer(room, ice.Description, stop.Token);
+            var path = await ice.ConnectAsync(offer, stop.Token);
+            await using var quic = new IceQuicConnection();
+            using var channel = await quic.Accept(path, identity, stop.Token);
+            Check((await channel.Receive(stop.Token)).SequenceEqual(new byte[] { 61 }), "Late host admission");
+            await channel.Send([62], stop.Token);
+            await guest;
+            Console.WriteLine("PASS guest authenticated and exchanged data after a 46-second host delay");
+        }
+        finally
+        {
+            stop.Cancel();
+            await guest.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    private static async Task CancelWaitingHost(RendezvousClient service)
+    {
+        using var identity = RoomIdentity.Create();
         using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         var issued = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         var mapping = new WaitingMapping();
-        var accept = OnlineSession.AcceptNumber(listener, service, identity, issued.SetResult, _ => { }, lifetime.Token, mapping.Open);
-        string number;
+        await using var transport = new NumberedTransport(service, mapping.Open);
+        var accept = transport.Host(identity, issued.SetResult, _ => { }, lifetime.Token);
         try
         {
             if (await Task.WhenAny(accept, issued.Task) == accept) await accept;
-            number = await issued.Task.WaitAsync(lifetime.Token);
+            await issued.Task.WaitAsync(lifetime.Token);
         }
         finally
         {
@@ -186,9 +224,7 @@ internal static class Program
             }
             catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         }
-        Check(mapping.Opened && mapping.Closed, "Cancelled host leaked its mapping");
-        using var response = await auditClient.PostAsJsonAsync("/v1/rooms/join", new { number });
-        Check(response.StatusCode == HttpStatusCode.NotFound, "Cancelled host leaked a joinable room");
+        Check(!mapping.Opened, "Idle room unnecessarily opened a UDP mapping");
     }
 
     private static HttpClientHandler TestHandler(X509Certificate2 cert) => new()

@@ -215,9 +215,6 @@ internal static partial class SelfTests
         {
             await WithChannels(async (client, server, token) =>
             {
-                var socket = typeof(SecureChannel).GetField("client", BindingFlags.NonPublic | BindingFlags.Instance)!;
-                ((TcpClient)socket.GetValue(client)!).SendBufferSize = 4096;
-                ((TcpClient)socket.GetValue(server)!).ReceiveBufferSize = 4096;
                 using var limit = CancellationTokenSource.CreateLinkedTokenSource(token); limit.CancelAfter(TimeSpan.FromSeconds(15));
                 var payload = new byte[SecureChannel.MaximumPayload];
                 await ExpectThrowsAsync<TimeoutException>(async () =>
@@ -225,7 +222,7 @@ internal static partial class SelfTests
                     for (var i = 0; i < 16384; ++i) await client.Send(payload, limit.Token);
                     throw new Exception("non-reading peer did not exert backpressure within the test bound");
                 });
-            });
+            }, receiveBufferSize: 4096);
         });
         await Check("Diagnostic write failure cannot replace a desync error or skip its abort", async () =>
         {
@@ -281,11 +278,13 @@ internal static partial class SelfTests
         return passed ? 0 : 1;
     }
 
-    private static async Task WithChannels(Func<SecureChannel, SecureChannel, CancellationToken, Task> test)
+    private static async Task WithChannels(Func<SecureChannel, SecureChannel, CancellationToken, Task> test, int? receiveBufferSize = null)
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(55));
         using var identity = RoomIdentity.Create();
-        var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start();
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        if (receiveBufferSize.HasValue) listener.Server.ReceiveBufferSize = receiveBufferSize.Value;
+        listener.Start();
         try
         {
             var accepting = Accept(listener, identity, deadline.Token);
