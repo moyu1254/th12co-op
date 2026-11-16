@@ -115,7 +115,7 @@ internal sealed class UdpIcePeer : IAsyncDisposable
             }
             var selected = agent.SelectedPair;
             if (selected is not { Nominated: true } || selected.Remote.Port < 1024 || !allowed.Contains(selected.Remote.Address))
-                throw new IOException("相手の UDP 経路を確認できません。");
+                throw new DirectPathUnavailableException("相手の UDP 経路を確認できません。");
             return path = new IcePath(agent, selected.RemoteEndPoint);
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)

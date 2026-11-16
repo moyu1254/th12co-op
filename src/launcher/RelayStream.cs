@@ -52,9 +52,12 @@ internal sealed class RelayStream(WebSocket socket) : Stream
     // ShutdownAsync has no token; aborting the socket bounds a stalled final write.
     internal void FinishTls(SslStream tls)
     {
-        using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(1));
-        using var interrupt = limit.Token.Register(socket.Abort);
-        try { tls.ShutdownAsync().GetAwaiter().GetResult(); }
+        try
+        {
+            using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            using var interrupt = limit.Token.Register(socket.Abort);
+            tls.ShutdownAsync().GetAwaiter().GetResult();
+        }
         catch (Exception e) when (e is IOException or WebSocketException or InvalidOperationException or OperationCanceledException) { }
         finally { tls.Dispose(); }
     }
@@ -67,9 +70,9 @@ internal sealed class RelayStream(WebSocket socket) : Stream
             {
                 if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
                 {
-                    // The relay acknowledges after forwarding the final ciphertext. Once
-                    // disposed is set no new reader can reach the socket. An existing
-                    // reader owns that direction, so use a write-only close in that case.
+                    // Give the peer time to reply to the close. Once disposed is set no
+                    // new reader can reach the socket. An existing reader owns that
+                    // direction, so use a write-only close in that case.
                     using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(1));
                     var close = Volatile.Read(ref reading) == 0
                         ? socket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, limit.Token)

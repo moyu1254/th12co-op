@@ -15,9 +15,7 @@ internal static class RelayServerTests
     {
         internal async Task<Peers> Room(bool answered = true)
         {
-            using var proofResponse = await client.PostAsJsonAsync("/v3/rooms/proof", new { }, ct);
-            var proof = (await proofResponse.EnsureSuccessStatusCode().Content.ReadFromJsonAsync<AddressProof>(ct))!;
-            var ice = new VerifiedIce(new("abcd", new string('B', 24), [new(proof.Address, 33000)]), [proof.Token]);
+            var ice = new VerifiedIce(IceDescription.NoDirect, []);
             using var create = await client.PostAsJsonAsync("/v3/rooms/create", new { invite }, ct);
             var room = (await create.EnsureSuccessStatusCode().Content.ReadFromJsonAsync<Registration>(ct))!;
             using var join = await client.PostAsJsonAsync("/v3/rooms/join", new { room.Number, offer = ice }, ct);
@@ -142,16 +140,24 @@ internal static class RelayServerTests
         var sockets = await Task.WhenAll(fx.AfterCleanup(final, true), fx.AfterCleanup(final, false));
         using var sender = sockets[0];
         using var recipient = sockets[1];
+        byte[] reply = [0x24, 0x68];
+        await recipient.SendAsync(reply.AsMemory(0, 1), WebSocketMessageType.Binary, false, ct);
         await sender.SendAsync(last.AsMemory(), WebSocketMessageType.Binary, true, ct);
-        // The relay must drain the final bytes and acknowledge the sender even
-        // while the recipient hasn't yet read the final message or its close.
-        await sender.CloseAsync(WebSocketCloseStatus.NormalClosure, null, ct).WaitAsync(TimeSpan.FromSeconds(3), ct);
+        await sender.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, null, ct);
         await Receive(recipient, last, ct);
+        // The sender is still reading. The peer hasn't read its Close yet and
+        // can finish a write that was in progress before the closing handshake.
+        await Task.Delay(TimeSpan.FromSeconds(3), ct);
+        await recipient.SendAsync(reply.AsMemory(1), WebSocketMessageType.Binary, true, ct);
+        await Receive(sender, reply, ct);
         var close = await recipient.ReceiveAsync(new byte[1].AsMemory(), ct);
         if (close.MessageType != WebSocketMessageType.Close || recipient.CloseStatus != WebSocketCloseStatus.NormalClosure)
             throw new InvalidDataException("Expected an orderly relay close after the last message");
         await recipient.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, null, ct);
-        Console.WriteLine("PASS relay acknowledges close after forwarding final data to a delayed reader");
+        close = await sender.ReceiveAsync(new byte[1].AsMemory(), ct);
+        if (close.MessageType != WebSocketMessageType.Close || sender.CloseStatus != WebSocketCloseStatus.NormalClosure)
+            throw new InvalidDataException("Expected the delayed peer's orderly close after its final reply");
+        Console.WriteLine("PASS relay drains final records and close in both directions with a three-second delayed peer");
     }
 
     private static async Task Expiry(Fixture fx, CancellationToken ct)

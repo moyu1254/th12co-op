@@ -31,14 +31,16 @@ internal sealed class NumberedTransport(RendezvousClient service,
             if (!offer.IsNoDirect) await Gather(true, token);
             var published = await service.Answer(room, ice?.Description ?? IceDescription.NoDirect, token);
             return await Connect(published.IsNoDirect ? IceDescription.NoDirect : offer,
-                (q, path) => q.Accept(path, identity, token), () => service.AcceptRelay(room, identity, token), status, token);
+                (q, path) => q.Accept(path, identity, token),
+                ready => service.AgreeDirect(room.Number, room.OwnerToken, true, ready, token),
+                () => service.AcceptRelay(room, identity, token), status, token);
         }
         catch
         {
             // The host will not be returning a channel. Revoke both the signaling
             // credentials and any still-waiting relay, including after an answer.
             try { await service.Close(room); }
-            catch (IOException) { status("部屋を取り消せませんでした。番号は10分で失効します。"); }
+            catch (IOException) { status("部屋を取り消せませんでした。部屋は期限が来ると自動で閉じます。"); }
             throw;
         }
     }
@@ -53,6 +55,7 @@ internal sealed class NumberedTransport(RendezvousClient service,
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         { throw new TimeoutException("ホストの接続候補が90秒以内に届きませんでした。"); }
         return await Connect(answer, (q, path) => q.Connect(path, claim.Invite, token),
+            ready => service.AgreeDirect(number, claim.GuestToken, false, ready, token),
             () => service.ConnectRelay(number, claim, token), status, token);
     }
 
@@ -65,17 +68,26 @@ internal sealed class NumberedTransport(RendezvousClient service,
     }
 
     private async Task<SecureChannel> Connect(IceDescription remote, Func<IceQuicConnection, IcePath, Task<SecureChannel>> direct,
-        Func<Task<SecureChannel>> relay, Action<string> status, CancellationToken token)
+        Func<bool, Task<bool>> agreeDirect, Func<Task<SecureChannel>> relay, Action<string> status, CancellationToken token)
     {
         if (ice != null && !remote.IsNoDirect)
         {
+            SecureChannel? channel = null;
             try
             {
                 var path = await ice.ConnectAsync(remote, token);
                 quic = new();
-                return await direct(quic, path);
+                channel = await direct(quic, path);
             }
             catch (DirectPathUnavailableException) when (!token.IsCancellationRequested) { }
+            // The peer's last application handshake message may be lost even if
+            // our own handshake returned. Both peers must agree before showing the code.
+            try
+            {
+                if (await agreeDirect(channel != null)) return channel!;
+            }
+            catch { channel?.Dispose(); throw; }
+            channel?.Dispose();
         }
         await ReleaseDirect();
         token.ThrowIfCancellationRequested();

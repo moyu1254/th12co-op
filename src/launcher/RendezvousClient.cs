@@ -123,6 +123,29 @@ internal sealed class RendezvousClient : IDisposable
         return ice.Description;
     }
 
+    internal async Task<bool> AgreeDirect(string number, string credential, bool host, bool direct, CancellationToken token)
+    {
+        var proposal = new { number, token = credential, host, direct };
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+        deadline.CancelAfter(TimeSpan.FromSeconds(35));
+        try
+        {
+            while (true)
+            {
+                using var response = await Post("route", proposal, HttpStatusCode.OK, deadline.Token);
+                switch (await Read<string>(response, deadline.Token))
+                {
+                    case "direct" when direct: return true;
+                    case "relay": return false;
+                    case "pending" when direct: await Task.Delay(TimeSpan.FromSeconds(1), deadline.Token); break;
+                    default: throw InvalidResponse();
+                }
+            }
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        { throw new TimeoutException("接続経路が35秒以内に確定しませんでした。"); }
+    }
+
     private async Task<VerifiedIce> VerifyLocal(IceDescription ice, CancellationToken token)
     {
         if (!ice.IsValidSignal(AllowLoopback)) throw new IOException("有効な UDP 接続候補を取得できませんでした。");
@@ -200,8 +223,8 @@ internal sealed class RendezvousClient : IDisposable
         HttpClient? client = null)
     {
         bool poll = action is "offer" or "receive";
-        int attempts = poll ? 4 : action == "answer" ? 2 : 1;
-        int seconds = action switch { "offer" => 25, "receive" or "answer" => 4, _ => 8 };
+        int attempts = poll ? 4 : action is "answer" or "route" ? 2 : 1;
+        int seconds = action switch { "offer" => 25, "receive" or "answer" or "route" => 4, _ => 8 };
         HttpResponseMessage response;
         for (int attempt = 1; ; attempt++)
         {

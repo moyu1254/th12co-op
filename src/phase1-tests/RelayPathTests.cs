@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Text.Json;
 using DirectoryServer = TH12Coop.Rendezvous.Program;
 
 namespace TH12Coop.Phase1Tests;
@@ -19,6 +20,7 @@ internal sealed class RouteProbe(HttpMessageHandler inner) : DelegatingHandler(i
     internal int Closes => Volatile.Read(ref closes);
     internal int Upgrades => Volatile.Read(ref upgrades);
     internal int Rewritten => Volatile.Read(ref rewritten);
+    internal TaskCompletionSource<string> FirstRouteReply { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
     {
@@ -31,6 +33,11 @@ internal sealed class RouteProbe(HttpMessageHandler inner) : DelegatingHandler(i
             return new(HttpStatusCode.ServiceUnavailable);
         }
         var response = await base.SendAsync(request, token);
+        if (path == "/v3/rooms/route" && response.IsSuccessStatusCode)
+        {
+            var json = await response.Content.ReadAsStringAsync(token);
+            FirstRouteReply.TrySetResult(JsonSerializer.Deserialize<string>(json) ?? throw new InvalidDataException());
+        }
         if (UnreachablePort != 0 && path is ("/v3/rooms/offer" or "/v3/rooms/receive") && response.StatusCode == HttpStatusCode.OK)
         {
             using var original = response.Content;
@@ -45,8 +52,48 @@ internal sealed class RouteProbe(HttpMessageHandler inner) : DelegatingHandler(i
 
 internal static class RelayPathTests
 {
+    internal static async Task AsymmetricRoute(RendezvousClient service, Uri url, X509Certificate2 cert, CancellationToken token)
+    {
+        using var identity = RoomIdentity.Create();
+        var room = await service.Create(identity.Invite, token);
+        var probe = new RouteProbe(Program.TestHandler(cert));
+        using var guestService = new RendezvousClient(url.AbsoluteUri, probe);
+        await using var guestTransport = new NumberedTransport(guestService);
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        var ct = stop.Token;
+        var join = guestTransport.Join(room.Number, _ => { }, ct);
+        try
+        {
+            var offer = await service.WaitOffer(room, ct);
+            await using var ice = await UdpIcePeer.GatherAsync(true, url, ct);
+            await service.Answer(room, ice.Description, ct);
+            var path = await ice.ConnectAsync(offer, ct);
+            await using var quic = new IceQuicConnection();
+            using var original = await quic.Accept(path, identity, ct);
+            // The guest really authenticated QUIC; model a host that couldn't use
+            // the final handshake bytes and reports failure after the guest's proposal.
+            if (await probe.FirstRouteReply.Task.WaitAsync(ct) != "pending" || join.IsCompleted)
+                throw new IOException("Guest exposed an unagreed direct channel");
+            if (await service.AgreeDirect(room.Number, room.OwnerToken, true, false, ct))
+                throw new IOException("Host failed to select the relay after direct path loss");
+            using var relay = await service.AcceptRelay(room, identity, ct);
+            using var guest = await join;
+            if (probe.Upgrades != 1 || original.Session.SequenceEqual(relay.Session) || !relay.Session.SequenceEqual(guest.Session))
+                throw new IOException("Peers did not reauthenticate on the agreed relay");
+            await guest.Send([49], ct);
+            if (!(await relay.Receive(ct)).SequenceEqual(new byte[] { 49 })) throw new IOException("Relay did not carry the record");
+            Console.WriteLine("PASS guest with authenticated direct QUIC follows the host's relay decision before confirmation");
+        }
+        finally
+        {
+            stop.Cancel();
+            await ((Task)join).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
     internal static async Task Run(X509Certificate2 cert, CancellationToken token)
     {
+        await RelayShutdownTest.Run(token);
         await using var app = DirectoryServer.Build(cert, new(), IPAddress.Loopback, 0, TimeProvider.System);
         await app.StartAsync(token);
         try
@@ -118,7 +165,7 @@ internal static class RelayPathTests
     private static async Task RejectIdentity(RendezvousClient service, bool wrongPin, CancellationToken token)
     {
         using var identity = RoomIdentity.Create();
-        var ice = new IceDescription("abcd", new string('B', 24), [new("127.0.0.1", 33000)]);
+        var ice = IceDescription.NoDirect;
         var room = await service.Create(identity.Invite, token);
         var guest = await service.Join(room.Number, ice, token);
         await service.Answer(room, ice, token);

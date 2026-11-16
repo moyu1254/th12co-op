@@ -148,7 +148,8 @@ internal static class Program
                 Check(hostRequests.Closes == 1 && hostRequests.Upgrades == 0, "Cancelling an unclaimed room must close without relay");
                 using var tests = new CancellationTokenSource(TimeSpan.FromMinutes(2));
                 await Task.WhenAll(DelayedHostOfferProcessing(service, tests.Token),
-                    QuicIdentityTests.Run(tests.Token), UdpPathTests.Run(tests.Token), RelayPathTests.Run(cert, tests.Token));
+                    QuicIdentityTests.Run(tests.Token), UdpPathTests.Run(tests.Token), RelayPathTests.Run(cert, tests.Token),
+                    RelayPathTests.AsymmetricRoute(service, url, cert, tests.Token));
             }
             Console.WriteLine(games == null ? "PASS numbered HTTPS/ICE/QUIC loopback, confirmation and cleanup" :
                 $"PASS numbered {(relayGame ? "WSS relay" : "QUIC direct")} loopback game, lockstep, quiet operation and cleanup");
@@ -183,6 +184,8 @@ internal static class Program
             var path = await ice.ConnectAsync(offer, stop.Token);
             await using var quic = new IceQuicConnection();
             using var channel = await quic.Accept(path, identity, stop.Token);
+            Check(await service.AgreeDirect(room.Number, room.OwnerToken, true, true, stop.Token),
+                "Guest failed to agree on the late host's authenticated direct route");
             Check((await channel.Receive(stop.Token)).SequenceEqual(new byte[] { 61 }), "Late host admission");
             await channel.Send([62], stop.Token);
             await guest;

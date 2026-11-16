@@ -11,8 +11,10 @@ internal static class UdpPathTests
 
     internal static async Task Run(CancellationToken token)
     {
-        await TranslatedPath(token);
-        await TranslatedPath(token, blockQuic: true);
+        await TranslatedPath(token, PacketLoss.FirstInitial);
+        await TranslatedPath(token, PacketLoss.AllInitials);
+        await TranslatedPath(token, PacketLoss.AfterServerFlight);
+        await UnusableNomination(token);
         await FilteredPeerReflexiveChecks(token);
         await WrongIcePasswords(token);
         if (Socket.OSSupportsIPv6)
@@ -29,6 +31,8 @@ internal static class UdpPathTests
 
     // Each endpoint has a separate public port and a STUN listener. The fixture only
     // forwards packets between the two loopback sockets that issued the Binding requests.
+    private enum PacketLoss { None, FirstInitial, AllInitials, AfterServerFlight }
+
     private sealed class Translation : IDisposable
     {
         private readonly UdpClient stun = new(new IPEndPoint(IPAddress.Loopback, 0));
@@ -37,6 +41,8 @@ internal static class UdpPathTests
         internal IPEndPoint External => (IPEndPoint)external.Client.LocalEndPoint!;
         internal IPEndPoint Internal { get; private set; } = null!;
         internal bool DroppedInitial { get; private set; }
+        internal bool DroppedApplicationPacket { get; private set; }
+        private bool forwardedQuic;
 
         internal async Task Reflect(CancellationToken token)
         {
@@ -49,17 +55,27 @@ internal static class UdpPathTests
             await stun.SendAsync(response.Encode(appendFingerprint: true), Internal, token);
         }
 
-        internal async Task ForwardFrom(Translation sender, bool dropFirstQuic, CancellationToken token, bool blockQuic = false)
+        internal async Task ForwardFrom(Translation sender, PacketLoss loss, CancellationToken token)
         {
             while (true)
             {
                 var packet = await external.ReceiveAsync(token);
                 if (!packet.RemoteEndPoint.Equals(sender.Internal)) continue;
-                if ((blockQuic || dropFirstQuic && !DroppedInitial) && packet.Buffer.Length >= 1200 && (packet.Buffer[0] & 0xc0) == 0xc0)
+                var header = packet.Buffer[0] & 0xc0;
+                if (loss == PacketLoss.AfterServerFlight && Volatile.Read(ref sender.forwardedQuic) && header != 0)
+                {
+                    // Keep STUN alive. QUIC reaches the client but its Finished and
+                    // subsequent 1-RTT packets cannot reach the server.
+                    if (header == 0x40) DroppedApplicationPacket = true;
+                    continue;
+                }
+                if ((loss == PacketLoss.AllInitials || loss == PacketLoss.FirstInitial && !DroppedInitial) &&
+                    packet.Buffer.Length >= 1200 && header == 0xc0)
                 {
                     DroppedInitial = true;
                     continue;
                 }
+                if (header != 0) Volatile.Write(ref forwardedQuic, true);
                 await sender.external.SendAsync(packet.Buffer, Internal, token);
             }
         }
@@ -78,7 +94,7 @@ internal static class UdpPathTests
         }
     }
 
-    private static async Task TranslatedPath(CancellationToken token, bool blockQuic = false)
+    private static async Task TranslatedPath(CancellationToken token, PacketLoss loss)
     {
         using var hostNat = new Translation();
         using var guestNat = new Translation();
@@ -99,7 +115,7 @@ internal static class UdpPathTests
         {
             Candidates = [new IceEndpoint("::1", deadPort), new IceEndpoint("127.0.0.1", deadPort), ..offer.Candidates]
         };
-        var forwarding = Task.WhenAll(hostNat.ForwardFrom(guestNat, true, ct, blockQuic), guestNat.ForwardFrom(hostNat, false, ct));
+        var forwarding = Task.WhenAll(hostNat.ForwardFrom(guestNat, loss, ct), guestNat.ForwardFrom(hostNat, PacketLoss.None, ct));
         try
         {
             var paths = await Task.WhenAll(host.ConnectAsync(WithDeadPorts(guestOffer), ct),
@@ -111,7 +127,7 @@ internal static class UdpPathTests
             await using var client = new IceQuicConnection();
             var accept = server.Accept(paths[0], identity, ct);
             var connect = client.Connect(paths[1], identity.Invite, ct);
-            if (blockQuic)
+            if (loss != PacketLoss.FirstInitial)
             {
                 static async Task NoPath(Task<SecureChannel> handshake)
                 {
@@ -120,8 +136,16 @@ internal static class UdpPathTests
                     throw new InvalidOperationException("An unavailable QUIC path established a channel");
                 }
                 await Task.WhenAll(NoPath(accept), NoPath(connect));
-                Check(hostNat.DroppedInitial, "No QUIC Initial reached the nominated path");
-                Console.WriteLine("PASS ICE nominated the pair but blocked QUIC selected fallback on both peers");
+                if (loss == PacketLoss.AfterServerFlight)
+                {
+                    Check(hostNat.DroppedApplicationPacket, "Guest never produced an encrypted 1-RTT packet after the server's TLS flight");
+                    Console.WriteLine("PASS loss of the client's final QUIC handshake flight selects fallback on both peers");
+                }
+                else
+                {
+                    Check(hostNat.DroppedInitial, "No QUIC Initial reached the nominated path");
+                    Console.WriteLine("PASS ICE nominated the pair but blocked QUIC selected fallback on both peers");
+                }
                 return;
             }
             var channels = await Task.WhenAll(accept, connect);
@@ -140,6 +164,33 @@ internal static class UdpPathTests
             try { await forwarding; } catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         }
         Console.WriteLine("PASS loopback STUN translated both ports, negotiated the reflected pair, and carried a 4096-byte QUIC record after dropping the first Initial");
+    }
+
+    private static async Task UnusableNomination(CancellationToken token)
+    {
+        var agent = new IceAgent(new IceAgentOptions { BindAddress = IPAddress.Loopback, Role = IceRole.Controlling });
+        await using var host = new UdpIcePeer(agent, loopback: true);
+        await using var guest = await UdpIcePeer.GatherAsync(false, Loopback, token);
+        await agent.StartGatheringAsync(token);
+        var hostOffer = new IceDescription(agent.LocalUfrag, agent.LocalPassword,
+            [new(IPAddress.Loopback.ToString(), agent.LocalEndPoint!.Port)]);
+        // Exercise the final selection check independently of the normal inbound filter.
+        // The test agent can nominate the guest's real loopback endpoint even though
+        // only a different loopback IP was advertised to this host.
+        agent.AcceptRemoteCheck = _ => true;
+        using var silent = new UdpClient(new IPEndPoint(IPAddress.Parse("127.0.0.2"), 0));
+        var candidate = (IPEndPoint)silent.Client.LocalEndPoint!;
+        var offer = guest.Description with { Candidates = [new(candidate.Address.ToString(), candidate.Port)] };
+        var accepting = host.ConnectAsync(offer, token);
+        await guest.ConnectAsync(hostOffer, token);
+        try { await accepting; }
+        catch (DirectPathUnavailableException) when (agent.SelectedPair is { Nominated: true } pair &&
+            !pair.Remote.Address.Equals(candidate.Address))
+        {
+            Console.WriteLine("PASS a nominated endpoint outside the signaled addresses is rejected and eligible for relay");
+            return;
+        }
+        throw new InvalidOperationException("Accepted an unproved nominated endpoint");
     }
 
     private static async Task FilteredPeerReflexiveChecks(CancellationToken token)

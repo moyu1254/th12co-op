@@ -33,6 +33,10 @@ internal static class ServerTests
         ReservationCapacity(invite);
         DelayedRegistration(invite);
         await Signaling(invite);
+        await LateRoomClaim(invite);
+        await RelaySourceCapacity(invite);
+        Console.WriteLine("PASS late join and answer keep bounded private deadlines; each relay source shares concurrent pair limits across roles");
+        RouteAgreement(invite);
         Console.WriteLine("PASS 48 reservations per admission window, expiry from admission, IPv4/IPv6 prefix budgets and independent global limits");
         await PollBudgets(invite, host: true);
         await PollBudgets(invite, host: false);
@@ -43,11 +47,110 @@ internal static class ServerTests
         return 0;
     }
 
+    private static async Task LateRoomClaim(string invite)
+    {
+        var clock = new ManualTime();
+        var rooms = new RoomDirectory(clock);
+        var source = IPAddress.Loopback;
+        var ice = new VerifiedIce(IceDescription.NoDirect, []);
+        var room = rooms.Create(invite, 0)!;
+        var lateAnswer = rooms.Create(invite, 0)!;
+        var unanswered = rooms.Create(invite, 0)!;
+        var unused = rooms.Create(invite, 0)!;
+        clock.Now = TimeSpan.FromMinutes(10).Ticks - TimeSpan.FromSeconds(15).Ticks;
+        var joinedAt = clock.Now;
+        var guest = rooms.Join(room.Number, ice, source)!.GuestToken;
+        Check(rooms.Join(lateAnswer.Number, ice, source) != null && rooms.Join(unanswered.Number, ice, source) != null, "claim near expiry");
+        clock.Now += TimeSpan.TicksPerSecond;
+        var answeredAt = clock.Now;
+        Check(rooms.Answer(room.Number, room.OwnerToken, ice, source), "publish near expiry");
+        clock.Now += TimeSpan.FromSeconds(12).Ticks;
+        var waiting = rooms.ReserveRelay(room.Number, room.OwnerToken, true, source);
+        Check(waiting.Status == HttpStatusCode.OK, "relay wait before public expiry");
+        clock.Now = RoomDirectory.Lifetime.Ticks;
+        rooms.RemoveExpired();
+        Check(rooms.Join(unused.Number, ice, source) == null && rooms.Join(room.Number, ice, source) == null, "public claim expired");
+        Check((await rooms.Wait(room.Number, guest, false, source, default)).Description?.IsNoDirect == true &&
+              rooms.Answer(lateAnswer.Number, lateAnswer.OwnerToken, ice, source), "authenticated retrieval and answer after public expiry");
+        var paired = rooms.ReserveRelay(room.Number, guest, false, source);
+        Check(paired.Status == HttpStatusCode.OK && paired.Pair == waiting.Pair, "opposite roles can pair across public expiry");
+        await ReleaseTestRole(paired.Pair!, true);
+        await ReleaseTestRole(paired.Pair!, false);
+        clock.Now = joinedAt + RoomDirectory.AnswerWait.Ticks;
+        Check(!rooms.Answer(unanswered.Number, unanswered.OwnerToken, ice, source) &&
+              rooms.Answer(room.Number, room.OwnerToken, ice, source), "unanswered claim expires; existing answer may be replayed");
+        clock.Now = answeredAt + RoomDirectory.AnswerRetention.Ticks;
+        Check((await rooms.Wait(room.Number, guest, false, source, default)).Status == HttpStatusCode.NotFound,
+            "replayed answer never extends the private deadline");
+    }
+
+    // Exercise the same reservation/handler release path without opening a socket.
+    private static Task ReleaseTestRole(RelayPair pair, bool host) =>
+        pair.Serve(new DefaultHttpContext(), host, new CancellationToken(canceled: true));
+
+    private static async Task RelaySourceCapacity(string invite)
+    {
+        var rooms = new RoomDirectory(new ManualTime());
+        var ice = new VerifiedIce(IceDescription.NoDirect, []);
+        var local = IPAddress.Loopback;
+        (Registration Host, Claim Guest) Room()
+        {
+            var room = rooms.Create(invite, 0)!;
+            var guest = rooms.Join(room.Number, ice, local)!;
+            Check(rooms.Answer(room.Number, room.OwnerToken, ice, local), "publish relay-only room");
+            return (room, guest);
+        }
+        var a = IPAddress.Parse("192.0.2.1");
+        var b = IPAddress.Parse("192.0.2.2");
+        var first = Room();
+        var pair = rooms.ReserveRelay(first.Host.Number, first.Guest.GuestToken, false, a);
+        Check(pair.Status == HttpStatusCode.OK &&
+              rooms.ReserveRelay(first.Host.Number, first.Host.OwnerToken, true, a.MapToIPv6()).Status == HttpStatusCode.OK,
+            "one pair counts once behind the same NAT");
+        var second = Room();
+        var waiting = rooms.ReserveRelay(second.Host.Number, second.Host.OwnerToken, true, a);
+        Check(waiting.Status == HttpStatusCode.OK, "same source may occupy a second pair");
+        var third = Room();
+        Check(rooms.ReserveRelay(third.Host.Number, third.Host.OwnerToken, true, a).Status == HttpStatusCode.ServiceUnavailable,
+            "waiting and paired roles share source capacity");
+        var other = rooms.ReserveRelay(third.Host.Number, third.Host.OwnerToken, true, b);
+        Check(other.Status == HttpStatusCode.OK &&
+              rooms.ReserveRelay(third.Host.Number, third.Guest.GuestToken, false, a.MapToIPv6()).Status == HttpStatusCode.ServiceUnavailable,
+            "second role checked against its own source, including mapped IPv4");
+        await ReleaseTestRole(waiting.Pair!, true);
+        Check(rooms.ReserveRelay(third.Host.Number, third.Guest.GuestToken, false, a).Status == HttpStatusCode.OK,
+            "cancel frees its source and a capacity refusal does not consume the role");
+        await ReleaseTestRole(pair.Pair!, false);
+        await ReleaseTestRole(pair.Pair!, true);
+        await ReleaseTestRole(other.Pair!, true);
+        await ReleaseTestRole(other.Pair!, false);
+
+        var pending = new List<RelayPair>();
+        void Reserve(string address, bool available)
+        {
+            var (room, _) = Room();
+            var result = rooms.ReserveRelay(room.Number, room.OwnerToken, true, IPAddress.Parse(address));
+            Check(result.Status == (available ? HttpStatusCode.OK : HttpStatusCode.ServiceUnavailable), "IPv6 concurrent prefix budget");
+            if (result.Pair != null) pending.Add(result.Pair);
+        }
+        Reserve("2001:db8:1::1", true);
+        Reserve("2001:db8:1::2", true);
+        Reserve("2001:db8:1::3", false);     // /64
+        Reserve("2001:db8:1:1::1", true);
+        Reserve("2001:db8:1:2::1", true);
+        Reserve("2001:db8:1:3::1", false);  // /56
+        Reserve("2001:db8:1:100::1", true);
+        Reserve("2001:db8:1:200::1", true);
+        Reserve("2001:db8:1:300::1", false); // /48
+        Reserve("2001:db8:2::1", true);
+        foreach (var held in pending) await ReleaseTestRole(held, true);
+    }
+
     private static void IPv6PrefixLimits()
     {
         foreach (var (operation, per56, per48) in new[] { (Operation.Create, 8, 12), (Operation.Join, 12, 24), (Operation.Proof, 48, 72),
             (Operation.Offer, 320, 480), (Operation.Answer, 24, 36), (Operation.Receive, 640, 1280), (Operation.Close, 24, 36),
-            (Operation.Relay, 48, 72) })
+            (Operation.Route, 640, 1280), (Operation.Relay, 48, 72) })
         {
             var rooms = new RoomDirectory(new ManualTime());
             int admitted = 0;
@@ -68,7 +171,7 @@ internal static class ServerTests
         var rooms = new RoomDirectory(new ManualTime());
         var source = 0;
         foreach (var (op, limit) in new[] { (Operation.Create, 48), (Operation.Close, 96), (Operation.Join, 120),
-            (Operation.Proof, 384), (Operation.Offer, 1920), (Operation.Answer, 96), (Operation.Receive, 3200), (Operation.Relay, 192) })
+            (Operation.Proof, 384), (Operation.Offer, 1920), (Operation.Answer, 96), (Operation.Receive, 3200), (Operation.Route, 3200), (Operation.Relay, 192) })
         {
             // Each accepted request comes from a distinct /48. All budgeted requests fit,
             // including new sources arriving after the old 256-source table would have filled.
@@ -112,7 +215,7 @@ internal static class ServerTests
                     ?? throw new InvalidOperationException("accepted create could not reserve a number");
                 Check(numbers.Add(room.Number), "cancelled numbers stay reserved until expiry");
                 Check(rooms.Admit(Operation.Close, sources[i], out _), "owner close within budget");
-                Check(rooms.Close(room.Number, Convert.FromHexString(room.OwnerToken)), "owner retired its number");
+                Check(rooms.Close(room.Number, room.OwnerToken), "owner retired its number");
             }
             Check(!rooms.Admit(Operation.Create, IPAddress.Loopback, out _), "49th create denied at admission");
         }
@@ -129,7 +232,7 @@ internal static class ServerTests
         var issued = rooms.Create(invite, issuedAt) ?? throw new InvalidOperationException("delayed registration failed");
         Check(RoomDirectory.ValidNumber(issued.Number) && RoomDirectory.ValidToken(issued.OwnerToken), "credential encoding");
         clock.Now = RoomDirectory.Lifetime.Ticks;
-        Check(rooms.Admit(Operation.Join, source, out _) && !rooms.Close(issued.Number, Convert.FromHexString(issued.OwnerToken)), "TTL starts at admission");
+        Check(rooms.Admit(Operation.Join, source, out _) && !rooms.Close(issued.Number, issued.OwnerToken), "TTL starts at admission");
         Check(rooms.Create(invite, unfinishedAt) == null, "expired admission cannot issue a number");
     }
 
@@ -155,6 +258,37 @@ internal static class ServerTests
     private static IceDescription Description(params IceEndpoint[] endpoints) =>
         new("abcd", new string('A', 24), endpoints);
 
+    private static void RouteAgreement(string invite)
+    {
+        var clock = new ManualTime();
+        var rooms = new RoomDirectory(clock);
+        var source = IPAddress.Loopback;
+        var proof = rooms.IssueProof(source, clock.Now)!;
+        var ice = new VerifiedIce(Description(new IceEndpoint(proof.Address, 3100)), [proof.Token]);
+        foreach (bool hostFirst in new[] { false, true })
+        foreach (bool secondHasDirect in new[] { false, true })
+        {
+            var room = rooms.Create(invite, clock.Now)!;
+            var guest = rooms.Join(room.Number, ice, source)!;
+            var first = hostFirst ? room.OwnerToken : guest.GuestToken;
+            var second = hostFirst ? guest.GuestToken : room.OwnerToken;
+            string? Vote(bool host, string token, bool direct) => rooms.SelectRoute(room.Number, token, host, direct);
+            Check(Vote(hostFirst, first, true) == null && rooms.Answer(room.Number, room.OwnerToken, ice, source),
+                "vote only after answer");
+            Check(Vote(hostFirst, second, true) == null && Vote(hostFirst, first, true) == "pending" &&
+                Vote(hostFirst, first, true) == "pending", "one authenticated role cannot commit direct");
+            Check(rooms.ReserveRelay(room.Number, first, hostFirst, source).Pair == null, "no relay while direct is pending");
+            var expected = secondHasDirect ? "direct" : "relay";
+            Check(Vote(!hostFirst, second, secondHasDirect) == expected && Vote(hostFirst, first, true) == expected,
+                "both roles observe the same decision after a lost response");
+            Check(Vote(!hostFirst, second, !secondHasDirect) == null && Vote(hostFirst, first, true) == expected,
+                "neither a late retry nor a changed vote can switch a committed room");
+            if (secondHasDirect)
+                Check(rooms.ReserveRelay(room.Number, second, !hostFirst, source).Pair == null, "direct decision excludes WSS");
+        }
+        Console.WriteLine("PASS room commits one route across asymmetric direct results, role checks and retries");
+    }
+
     private static async Task PollBudgets(string invite, bool host)
     {
         var clock = new ManualTime();
@@ -170,23 +304,23 @@ internal static class ServerTests
         for (int i = 0; i < globalLimit - sourceLimit; i++)
             Check(rooms.Admit(operation, IPAddress.Parse($"2001:db8:{i:x}::1"), out _), "seed global poll budget");
 
-        (Registration Room, byte[] Token) Create()
+        (Registration Room, string Token) Create()
         {
             var room = rooms.Create(invite, clock.Now)!;
             var key = host ? room.OwnerToken : rooms.Join(room.Number, ice, source)!.GuestToken;
-            return (room, Convert.FromHexString(key));
+            return (room, key);
         }
         void Publish(Registration room) => Check(host ? rooms.Join(room.Number, ice, source) != null :
-            rooms.Answer(room.Number, Convert.FromHexString(room.OwnerToken), ice, source), "publish pending candidates");
+            rooms.Answer(room.Number, room.OwnerToken, ice, source), "publish pending candidates");
         var first = Create();
         var second = Create();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        async Task<HttpStatusCode> Poll((Registration Room, byte[] Token) peer, bool malformed = false)
+        async Task<HttpStatusCode> Poll((Registration Room, string Token) peer, bool malformed = false)
         {
             var fields = new Dictionary<string, string>
             {
                 ["number"] = peer.Room.Number,
-                [host ? "ownerToken" : "guestToken"] = Convert.ToHexString(peer.Token)
+                [host ? "ownerToken" : "guestToken"] = peer.Token
             };
             using var body = new MemoryStream(malformed ? "{"u8.ToArray() : JsonSerializer.SerializeToUtf8Bytes(fields));
             var context = new DefaultHttpContext { RequestAborted = timeout.Token };
@@ -236,7 +370,7 @@ internal static class ServerTests
         var offer = new VerifiedIce(Description(new(v6.ToString(), 33001), new(v4.ToString(), 43001)), [Proof(v4), Proof(v6)]);
         var answer = new VerifiedIce(Description(new IceEndpoint(v4.ToString(), 33002)), [Proof(v4)]);
         var room = rooms.Create(invite, clock.Now)!;
-        var owner = Convert.FromHexString(room.OwnerToken);
+        var owner = room.OwnerToken;
         using var abort = new CancellationTokenSource();
         var disconnected = rooms.Wait(room.Number, owner, true, v4, abort.Token);
         Check(!disconnected.IsCompleted && (await rooms.Wait(room.Number, owner, true, v4, default)).Status == HttpStatusCode.NoContent,
@@ -248,7 +382,7 @@ internal static class ServerTests
         Check(rooms.Join(room.Number, offer with { Proofs = [Proof(v4)] }, v4) == null,
             "cannot publish a second family without its proof");
         var claim = rooms.Join(room.Number, offer, v4)!;
-        var guest = Convert.FromHexString(claim.GuestToken);
+        var guest = claim.GuestToken;
         Check((await wait).Description == offer.Description && rooms.Join(room.Number, offer, v4) == null &&
               (await rooms.Wait(room.Number, owner, true, v4, default)).Description == offer.Description,
             "after a lost HTTP response only the owner can fetch the same offer again");
@@ -265,12 +399,12 @@ internal static class ServerTests
         Check((await rooms.Wait(room.Number, guest, false, v4, default)).Status == HttpStatusCode.NotFound && rooms.Join(room.Number, offer, v4) == null,
             "reading answer repeatedly does not extend retention or reopen the number");
         var closing = rooms.Create(invite, clock.Now)!;
-        var owner2 = Convert.FromHexString(closing.OwnerToken);
+        var owner2 = closing.OwnerToken;
         var pending = rooms.Wait(closing.Number, owner2, true, v4, default);
         Check(!rooms.Close(closing.Number, guest) && !pending.IsCompleted &&
             rooms.Close(closing.Number, owner2) && (await pending).Status == HttpStatusCode.NotFound, "close only wakes the owner's room");
         var expiring = rooms.Create(invite, clock.Now)!;
-        var expired = rooms.Wait(expiring.Number, Convert.FromHexString(expiring.OwnerToken), true, v4, default);
+        var expired = rooms.Wait(expiring.Number, expiring.OwnerToken, true, v4, default);
         clock.Now += RoomDirectory.Lifetime.Ticks;
         rooms.RemoveExpired();
         var fresh = rooms.Create(invite, clock.Now)!;

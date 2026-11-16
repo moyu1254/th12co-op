@@ -28,6 +28,7 @@ internal static class Program
     private sealed record Owner(string Number, string OwnerToken);
     private sealed record Guest(string Number, string GuestToken);
     private sealed record Answer(string Number, string OwnerToken, VerifiedIce Ice);
+    private sealed record Route(string Number, string Token, bool Host, bool Direct);
 
     private static async Task<int> Main(string[] args)
     {
@@ -120,6 +121,7 @@ internal static class Program
             "/v3/rooms/offer" => Operation.Offer,
             "/v3/rooms/answer" => Operation.Answer,
             "/v3/rooms/receive" => Operation.Receive,
+            "/v3/rooms/route" => Operation.Route,
             _ => null
         };
         if (op == null || context.Connection.RemoteIpAddress is not { } source) { response.StatusCode = 404; return; }
@@ -165,14 +167,21 @@ internal static class Program
                 case Operation.Answer:
                     var answer = await JsonSerializer.DeserializeAsync<Answer>(request.Body, Json, deadline.Token);
                     if (answer == null || !RoomDirectory.ValidNumber(answer.Number) || !RoomDirectory.ValidToken(answer.OwnerToken)) break;
-                    if (!directory.Answer(answer.Number, Convert.FromHexString(answer.OwnerToken), answer.Ice, source))
+                    if (!directory.Answer(answer.Number, answer.OwnerToken, answer.Ice, source))
                     { response.StatusCode = 404; return; }
                     response.StatusCode = 204;
+                    return;
+                case Operation.Route:
+                    var route = await JsonSerializer.DeserializeAsync<Route>(request.Body, Json, deadline.Token);
+                    if (route == null || !RoomDirectory.ValidNumber(route.Number) || !RoomDirectory.ValidToken(route.Token)) break;
+                    var choice = directory.SelectRoute(route.Number, route.Token, route.Host, route.Direct);
+                    if (choice == null) { response.StatusCode = 404; return; }
+                    await response.WriteAsJsonAsync(choice, Json, deadline.Token);
                     return;
                 case Operation.Close:
                     var close = await JsonSerializer.DeserializeAsync<Owner>(request.Body, Json, deadline.Token);
                     if (close == null || !RoomDirectory.ValidNumber(close.Number) || !RoomDirectory.ValidToken(close.OwnerToken)) break;
-                    directory.Close(close.Number, Convert.FromHexString(close.OwnerToken));
+                    directory.Close(close.Number, close.OwnerToken);
                     response.StatusCode = 204;
                     return;
             }
@@ -195,10 +204,10 @@ internal static class Program
         var number = request.Headers["X-TH12-Room"].ToString();
         var authorization = request.Headers.Authorization.ToString();
         const string bearer = "Bearer ";
-        if (!RoomDirectory.ValidNumber(number) || !authorization.StartsWith(bearer, StringComparison.OrdinalIgnoreCase)
-            || !RoomDirectory.ValidToken(authorization[bearer.Length..]))
+        var credential = authorization.StartsWith(bearer, StringComparison.OrdinalIgnoreCase) ? authorization[bearer.Length..] : null;
+        if (!RoomDirectory.ValidNumber(number) || !RoomDirectory.ValidToken(credential))
         { context.Response.StatusCode = 404; return; }
-        var (status, pair) = directory.ReserveRelay(number, Convert.FromHexString(authorization.AsSpan(bearer.Length)), host);
+        var (status, pair) = directory.ReserveRelay(number, credential, host, source);
         if (pair == null) { context.Response.StatusCode = (int)status; return; }
         await pair.Serve(context, host, stopping);
     }
@@ -235,7 +244,7 @@ internal static class Program
             return;
         }
 
-        var result = await directory.Wait(number, Convert.FromHexString(key), host, source, context.RequestAborted);
+        var result = await directory.Wait(number, key, host, source, context.RequestAborted);
         context.Response.StatusCode = (int)result.Status;
         if (result.Description == null) return;
         using var write = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);

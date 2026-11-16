@@ -24,34 +24,10 @@ internal sealed class RelayPair(bool firstHost, RelayLimits limits, TimeProvider
     private readonly TaskCompletionSource rolesReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource socketsReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly Endpoint?[] sockets = new Endpoint?[2];
+    private readonly WebSocket?[] sockets = new WebSocket?[2];
     private bool paired, finished;
     private int holders = 1, closeCount;
     private long transferred;
-
-    private sealed class Endpoint(WebSocket socket)
-    {
-        internal WebSocket Socket => socket;
-        private readonly SemaphoreSlim writer = new(1);
-        private bool sentClose;
-
-        // Data forwarding and a local close acknowledgement share the socket's one writer.
-        internal async Task Write(ReadOnlyMemory<byte> payload, CancellationToken token)
-        {
-            await writer.WaitAsync(token);
-            try
-            {
-                if (sentClose) return;
-                if (payload.IsEmpty)
-                {
-                    sentClose = true;
-                    await socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, null, token);
-                }
-                else await socket.SendAsync(payload, WebSocketMessageType.Binary, true, token);
-            }
-            finally { writer.Release(); }
-        }
-    }
 
     internal bool ReserveOther(bool host)
     {
@@ -87,13 +63,13 @@ internal sealed class RelayPair(bool firstHost, RelayLimits limits, TimeProvider
         try
         {
             await rolesReady.Task.WaitAsync(token);
+            token.ThrowIfCancellationRequested();
             // AcceptWebSocketAsync itself has no cancellation parameter.
             using (token.Register(context.Abort))
                 socket = await context.WebSockets.AcceptWebSocketAsync(new WebSocketAcceptContext { DangerousEnableCompression = false });
-            var local = new Endpoint(socket);
             lock (gate)
             {
-                sockets[side] = local;
+                sockets[side] = socket;
                 if (sockets[1 - side] != null)
                 {
                     deadline.CancelAfter(limits.Lifetime);
@@ -105,12 +81,13 @@ internal sealed class RelayPair(bool firstHost, RelayLimits limits, TimeProvider
             // Once upgraded, read disconnects from the socket itself. A request-abort
             // notification can race the final ciphertext and close frame already on it.
             using var live = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token, stopping);
-            await CopyMessages(local, remote, live.Token);
-            // Forward the close after the last payload and acknowledge the initiator
-            // without waiting for the other player's application to read the close.
-            live.CancelAfter(TimeSpan.FromSeconds(2));
-            await remote.Write(ReadOnlyMemory<byte>.Empty, live.Token);
-            await local.Write(ReadOnlyMemory<byte>.Empty, live.Token);
+            await CopyMessages(socket, remote, live.Token);
+            // Each direction has one writer. Forward its Close after its last data;
+            // the other writer can finish sending to our still-readable peer. Both
+            // upgraded requests must stay alive through the reverse close. Allow
+            // the application's 40-second read window, within the original pair TTL.
+            live.CancelAfter(TimeSpan.FromSeconds(40));
+            await remote.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, null, live.Token);
             if (Interlocked.Increment(ref closeCount) == 2) closed.TrySetResult();
             await closed.Task.WaitAsync(live.Token);
         }
@@ -139,15 +116,15 @@ internal sealed class RelayPair(bool firstHost, RelayLimits limits, TimeProvider
         }
     }
 
-    private async Task CopyMessages(Endpoint source, Endpoint destination, CancellationToken token)
+    private async Task CopyMessages(WebSocket source, WebSocket destination, CancellationToken token)
     {
         var messages = new RelayMessages();
         while (true)
         {
-            var payload = await messages.Read(source.Socket, token);
+            var payload = await messages.Read(source, token);
             if (payload.IsEmpty) return;
             if (Interlocked.Add(ref transferred, payload.Length) > limits.Bytes) throw new InvalidDataException();
-            await destination.Write(payload, token);
+            await destination.SendAsync(payload, WebSocketMessageType.Binary, true, token);
         }
     }
 }
