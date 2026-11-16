@@ -5,6 +5,7 @@ using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using System.Text.Json;
 
 namespace TH12Coop.Rendezvous;
 
@@ -33,6 +34,9 @@ internal static class ServerTests
         DelayedRegistration(invite);
         await Signaling(invite);
         Console.WriteLine("PASS 48 reservations per admission window, expiry from admission, IPv4/IPv6 prefix budgets and independent global limits");
+        await PollBudgets(invite, host: true);
+        await PollBudgets(invite, host: false);
+        Console.WriteLine("PASS busy and overlapping polls preserve offer/receive budgets; new waits, bad credentials and replayed reads remain metered");
         await HttpsLifecycle(invite);
         Console.WriteLine("PASS HTTPS address proof, single-use join, authenticated ICE exchange, cancellation and request bounds");
         return 0;
@@ -149,6 +153,77 @@ internal static class ServerTests
     private static IceDescription Description(params IceEndpoint[] endpoints) =>
         new("abcd", new string('A', 24), endpoints);
 
+    private static async Task PollBudgets(string invite, bool host)
+    {
+        var clock = new ManualTime();
+        var rooms = new RoomDirectory(clock, pollLimit: 1);
+        var source = IPAddress.Loopback;
+        var proof = rooms.IssueProof(source, clock.Now)!;
+        var ice = new VerifiedIce(Description(new IceEndpoint(proof.Address, 3012)), [proof.Token]);
+        var operation = host ? Operation.Offer : Operation.Receive;
+        var (sourceLimit, globalLimit) = host ? (160, 1920) : (320, 3200);
+        // Seed the windows in memory. Exercise the real HTTP admission path with six admissions left.
+        for (int i = 0; i < sourceLimit - 6; i++)
+            Check(rooms.Admit(operation, source, out _), "seed source poll budget");
+        for (int i = 0; i < globalLimit - sourceLimit; i++)
+            Check(rooms.Admit(operation, IPAddress.Parse($"2001:db8:{i:x}::1"), out _), "seed global poll budget");
+
+        (Registration Room, byte[] Token) Create()
+        {
+            var room = rooms.Create(invite, clock.Now)!;
+            var key = host ? room.OwnerToken : rooms.Join(room.Number, ice, source)!.GuestToken;
+            return (room, Convert.FromHexString(key));
+        }
+        void Publish(Registration room) => Check(host ? rooms.Join(room.Number, ice, source) != null :
+            rooms.Answer(room.Number, Convert.FromHexString(room.OwnerToken), ice, source), "publish pending candidates");
+        var first = Create();
+        var second = Create();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        async Task<HttpStatusCode> Poll((Registration Room, byte[] Token) peer, bool malformed = false)
+        {
+            var fields = new Dictionary<string, string>
+            {
+                ["number"] = peer.Room.Number,
+                [host ? "ownerToken" : "guestToken"] = Convert.ToHexString(peer.Token)
+            };
+            using var body = new MemoryStream(malformed ? "{"u8.ToArray() : JsonSerializer.SerializeToUtf8Bytes(fields));
+            var context = new DefaultHttpContext { RequestAborted = timeout.Token };
+            context.Connection.RemoteIpAddress = source;
+            context.Request.Scheme = "https";
+            context.Request.Path = host ? "/v2/rooms/offer" : "/v2/rooms/receive";
+            context.Request.Method = "POST";
+            context.Request.ContentType = "application/json";
+            context.Request.Body = body;
+            await Program.Dispatch(context, rooms);
+            return (HttpStatusCode)context.Response.StatusCode;
+        }
+
+        using var abort = new CancellationTokenSource();
+        var interrupted = rooms.Wait(first.Room.Number, first.Token, host, source, abort.Token);
+        abort.Cancel();
+        try { await interrupted; throw new InvalidOperationException("cancelled waiter remained active"); }
+        catch (OperationCanceledException) { }
+        var firstWait = Poll(first);
+        Check(!firstWait.IsCompleted, "first room reuses the only slot after disconnecting");
+        for (int retry = 0; retry < 3; retry++)
+        {
+            Check(await Poll(first) == HttpStatusCode.NoContent, "duplicate poll retries without spending a slot");
+            Check(await Poll(second) == HttpStatusCode.ServiceUnavailable, "different room retries while the slot is full");
+        }
+        Check(await Poll((first.Room, second.Token)) == HttpStatusCode.NotFound, "reject wrong credentials while full");
+        Check(await Poll(first, malformed: true) == HttpStatusCode.BadRequest, "reject malformed poll while full");
+        Publish(first.Room);
+        Check(await firstWait == HttpStatusCode.OK, "first accepted poll receives candidates");
+        var secondWait = Poll(second);
+        Check(!secondWait.IsCompleted, "other room can now take the freed slot");
+        Check(await Poll(first) == HttpStatusCode.OK, "available candidates need no wait slot");
+        Publish(second.Room);
+        Check(await secondWait == HttpStatusCode.OK, "second room receives candidates after busy retries");
+        Check(await Poll(second) == HttpStatusCode.TooManyRequests, "three waits, two invalid requests and a replay consume six admissions");
+        Check(await Poll(second, malformed: true) == HttpStatusCode.TooManyRequests, "exhausted poll budget also rejects malformed attempts");
+        Check(!rooms.Admit(operation, IPAddress.IPv6Loopback, out _), "same six admissions also fill the global budget");
+    }
+
     private static async Task Signaling(string invite)
     {
         var clock = new ManualTime();
@@ -161,43 +236,43 @@ internal static class ServerTests
         var room = rooms.Create(invite, clock.Now)!;
         var owner = Convert.FromHexString(room.OwnerToken);
         using var abort = new CancellationTokenSource();
-        var disconnected = rooms.Wait(room.Number, owner, true, abort.Token);
-        Check(!disconnected.IsCompleted && (await rooms.Wait(room.Number, owner, true, default)) is { Exists: true, Description: null },
+        var disconnected = rooms.Wait(room.Number, owner, true, v4, abort.Token);
+        Check(!disconnected.IsCompleted && (await rooms.Wait(room.Number, owner, true, v4, default)).Status == HttpStatusCode.NoContent,
             "overlapping owner poll does not occupy another waiter");
         abort.Cancel();
         try { await disconnected; throw new InvalidOperationException("cancelled poll remained active"); }
         catch (OperationCanceledException) { }
-        var wait = rooms.Wait(room.Number, owner, true, default);
+        var wait = rooms.Wait(room.Number, owner, true, v4, default);
         Check(rooms.Join(room.Number, offer with { Proofs = [Proof(v4)] }, v4) == null,
             "cannot publish a second family without its proof");
         var claim = rooms.Join(room.Number, offer, v4)!;
         var guest = Convert.FromHexString(claim.GuestToken);
         Check((await wait).Description == offer.Description && rooms.Join(room.Number, offer, v4) == null &&
-              (await rooms.Wait(room.Number, owner, true, default)).Description == offer.Description,
+              (await rooms.Wait(room.Number, owner, true, v4, default)).Description == offer.Description,
             "after a lost HTTP response only the owner can fetch the same offer again");
-        Check(!(await rooms.Wait(room.Number, guest, true, default)).Exists &&
-              !(await rooms.Wait(room.Number, owner, false, default)).Exists &&
+        Check((await rooms.Wait(room.Number, guest, true, v4, default)).Status == HttpStatusCode.NotFound &&
+              (await rooms.Wait(room.Number, owner, false, v4, default)).Status == HttpStatusCode.NotFound &&
               !rooms.Answer(room.Number, guest, answer, v4), "capability cannot switch roles");
-        var receive = rooms.Wait(room.Number, guest, false, default);
+        var receive = rooms.Wait(room.Number, guest, false, v4, default);
         Check(!receive.IsCompleted && rooms.Answer(room.Number, owner, answer, v4) &&
             (await receive).Description == answer.Description && rooms.Answer(room.Number, owner, answer, v4) &&
-            !rooms.Answer(room.Number, owner, offer, v4) && !(await rooms.Wait(room.Number, owner, true, default)).Exists &&
-            (await rooms.Wait(room.Number, guest, false, default)).Description == answer.Description,
+            !rooms.Answer(room.Number, owner, offer, v4) && (await rooms.Wait(room.Number, owner, true, v4, default)).Status == HttpStatusCode.NotFound &&
+            (await rooms.Wait(room.Number, guest, false, v4, default)).Description == answer.Description,
             "publishing acknowledges offer; identical publish and guest reads are replayable, replacement rejected");
         clock.Now += RoomDirectory.AnswerRetention.Ticks;
-        Check(!(await rooms.Wait(room.Number, guest, false, default)).Exists && rooms.Join(room.Number, offer, v4) == null,
+        Check((await rooms.Wait(room.Number, guest, false, v4, default)).Status == HttpStatusCode.NotFound && rooms.Join(room.Number, offer, v4) == null,
             "reading answer repeatedly does not extend retention or reopen the number");
         var closing = rooms.Create(invite, clock.Now)!;
         var owner2 = Convert.FromHexString(closing.OwnerToken);
-        var pending = rooms.Wait(closing.Number, owner2, true, default);
+        var pending = rooms.Wait(closing.Number, owner2, true, v4, default);
         Check(!rooms.Close(closing.Number, guest) && !pending.IsCompleted &&
-            rooms.Close(closing.Number, owner2) && !(await pending).Exists, "close only wakes the owner's room");
+            rooms.Close(closing.Number, owner2) && (await pending).Status == HttpStatusCode.NotFound, "close only wakes the owner's room");
         var expiring = rooms.Create(invite, clock.Now)!;
-        var expired = rooms.Wait(expiring.Number, Convert.FromHexString(expiring.OwnerToken), true, default);
+        var expired = rooms.Wait(expiring.Number, Convert.FromHexString(expiring.OwnerToken), true, v4, default);
         clock.Now += RoomDirectory.Lifetime.Ticks;
         rooms.RemoveExpired();
         var fresh = rooms.Create(invite, clock.Now)!;
-        Check(!(await expired).Exists && rooms.Join(fresh.Number, offer, v4) == null, "expiry drops pending waits and proofs");
+        Check((await expired).Status == HttpStatusCode.NotFound && rooms.Join(fresh.Number, offer, v4) == null, "expiry drops pending waits and proofs");
     }
 
     internal static X509Certificate2 TestCertificate()
@@ -253,11 +328,15 @@ internal static class ServerTests
                 return await response.Content.ReadFromJsonAsync<Claim>();
             }
             var first = await Create();
+            var second = await Create();
             await Close(first with { OwnerToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)) });
             var poll1 = client.PostAsJsonAsync("/v2/rooms/offer", first);
             var poll2 = client.PostAsJsonAsync("/v2/rooms/offer", first);
-            var rejected = await Task.WhenAny(poll1, poll2);
-            using var busy = await rejected;
+            var duplicate = await Task.WhenAny(poll1, poll2);
+            using var overlap = await duplicate;
+            Check(overlap.StatusCode == HttpStatusCode.NoContent && overlap.Headers.ConnectionClose == true,
+                "same owner already has a pending poll");
+            using var busy = await client.PostAsJsonAsync("/v2/rooms/offer", second);
             Check(busy.StatusCode == HttpStatusCode.ServiceUnavailable && busy.Headers.ConnectionClose == true,
                 "full poll budget refuses extra poll without keeping the HTTP socket");
             using var whileFull = await client.PostAsJsonAsync("/v2/rooms/proof", new { });
@@ -265,7 +344,7 @@ internal static class ServerTests
             var matches = await Task.WhenAll(Join(first.Number), Join(first.Number));
             var claim = matches.OfType<Claim>().Single();
             Check(claim.Invite == invite && RoomDirectory.ValidToken(claim.GuestToken), "one guest, original invite");
-            using var unread = await (rejected == poll1 ? poll2 : poll1);
+            using var unread = await (duplicate == poll1 ? poll2 : poll1);
             Check(unread.StatusCode == HttpStatusCode.OK, "join wakes original owner poll");
             using var offer = await client.PostAsJsonAsync("/v2/rooms/offer", first);
             Check(offer.StatusCode == HttpStatusCode.OK && offer.Headers.ConnectionClose == true, "owner obtains offer again");
@@ -279,7 +358,6 @@ internal static class ServerTests
             Check(received?.Candidates.Single() == ice.Description.Candidates.Single(), "claimed guest obtains answer");
             using var replay = await client.PostAsJsonAsync("/v2/rooms/receive", new { first.Number, claim.GuestToken });
             Check((await replay.Content.ReadAsStringAsync()) == (await receive.Content.ReadAsStringAsync()), "repeat guest read is identical");
-            var second = await Create();
             await Close(second);
             await Close(second);
             Check(await Join(second.Number) == null, "owner can revoke");

@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
@@ -10,11 +11,13 @@ internal sealed record Registration(string Number, string OwnerToken);
 internal sealed record Claim(string Invite, string GuestToken);
 internal enum Operation { Create, Join, Close, Proof, Offer, Answer, Receive }
 
-internal sealed class RoomDirectory(TimeProvider clock)
+internal sealed class RoomDirectory(TimeProvider clock, int pollLimit = RoomDirectory.MaxWaitingPolls)
 {
+    internal const int MaxWaitingPolls = 48;
     internal static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(10);
     internal static readonly TimeSpan AnswerRetention = TimeSpan.FromSeconds(90);
     private readonly object gate = new();
+    private int waitingPolls;
     private readonly Dictionary<string, Reservation> numbers = new();
     private readonly AdmissionWindow creates = new(4, 8, 12, 48);
     private readonly AdmissionWindow joins = new(6, 12, 24, 120);
@@ -77,10 +80,11 @@ internal sealed class RoomDirectory(TimeProvider clock)
                 accepted.Dequeue();
         }
 
-        internal bool TryAdmit(Network source, long now, TimeProvider clock)
+        internal bool HasCapacity(Network source, long now, TimeProvider clock)
         {
             Expire(now, clock);
             if (accepted.Count >= globalLimit) return false;
+            if (accepted.Count < sourceLimit) return true;
             int sameSource = 0, same56 = 0, same48 = 0;
             foreach (var (_, other) in accepted)
             {
@@ -89,6 +93,12 @@ internal sealed class RoomDirectory(TimeProvider clock)
                 if ((source.Bits >> 8) == (other.Bits >> 8) && ++same56 >= ipv6Limit56) return false;
                 if ((source.Bits >> 16) == (other.Bits >> 16) && ++same48 >= ipv6Limit48) return false;
             }
+            return true;
+        }
+
+        internal bool TryAdmit(Network source, long now, TimeProvider clock)
+        {
+            if (!HasCapacity(source, now, clock)) return false;
             accepted.Enqueue((now, source));
             return true;
         }
@@ -114,8 +124,16 @@ internal sealed class RoomDirectory(TimeProvider clock)
         }
     }
 
-    internal static bool ValidNumber(string? value) => value is { Length: 6 } && value.All(char.IsAsciiDigit);
-    internal static bool ValidToken(string? value) => value is { Length: 64 } && value.All(char.IsAsciiHexDigitUpper);
+    // Reject an already exhausted source before reading its HTTP body. Concurrent
+    // polls consume their quota only in Wait, after classifying the mailbox.
+    internal bool HasPollBudget(bool host, IPAddress source)
+    {
+        lock (gate) return (host ? offerRequests : receiveRequests)
+            .HasCapacity(Network.From(source), clock.GetTimestamp(), clock);
+    }
+
+    internal static bool ValidNumber([NotNullWhen(true)] string? value) => value is { Length: 6 } && value.All(char.IsAsciiDigit);
+    internal static bool ValidToken([NotNullWhen(true)] string? value) => value is { Length: 64 } && value.All(char.IsAsciiHexDigitUpper);
     internal static bool ValidInvite(string? value) =>
         value is { Length: 92 } && value.StartsWith("T12L6.", StringComparison.Ordinal)
         && value.AsSpan(6).IndexOfAnyExcept("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_") < 0
@@ -195,31 +213,51 @@ internal sealed class RoomDirectory(TimeProvider clock)
         }
     }
 
-    internal readonly record struct Poll(bool Exists, IceDescription? Description);
+    internal readonly record struct Poll(HttpStatusCode Status, IceDescription? Description = null);
 
-    internal async Task<Poll> Wait(string number, byte[] token, bool host, CancellationToken cancellation)
+    internal async Task<Poll> Wait(string number, byte[] token, bool host, IPAddress source, CancellationToken cancellation)
     {
         TaskCompletionSource<IceDescription?> waiter;
-        Mailbox box;
+        Mailbox? box = null;
         lock (gate)
         {
-            RemoveExpired(clock.GetTimestamp());
-            if (!numbers.TryGetValue(number, out var room) || room.Entry is not { } entry) return default;
-            var expected = host ? entry.Owner : entry.Guest;
-            if (expected == null || !CryptographicOperations.FixedTimeEquals(expected, token) ||
-                host && entry.AnsweredAt.HasValue) return default;
-            box = host ? entry.Offer : entry.Answer;
-            if (box.Value is { } value) return new(true, value);
-            if (box.Waiter != null) return new(true, null);
+            var now = clock.GetTimestamp();
+            if (numbers.TryGetValue(number, out var room) && !ExpireRoom(number, room, now) && room.Entry is { } entry)
+            {
+                var expected = host ? entry.Owner : entry.Guest;
+                if (expected != null && CryptographicOperations.FixedTimeEquals(expected, token) &&
+                    !(host && entry.AnsweredAt.HasValue))
+                    box = host ? entry.Offer : entry.Answer;
+            }
+
+            // Only a verified request that cannot start a wait gets a free retry.
+            if (box is { Value: null })
+            {
+                if (box.Waiter != null) return new(HttpStatusCode.NoContent);
+                if (waitingPolls >= pollLimit) return new(HttpStatusCode.ServiceUnavailable);
+            }
+            var budget = host ? offerRequests : receiveRequests;
+            if (!budget.TryAdmit(Network.From(source), now, clock)) return new(HttpStatusCode.TooManyRequests);
+            if (box == null) return new(HttpStatusCode.NotFound);
+            if (box.Value is { } value) return new(HttpStatusCode.OK, value);
+
             box.Waiter = waiter = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            waitingPolls++;
         }
         try
         {
             var value = await waiter.Task.WaitAsync(TimeSpan.FromSeconds(host ? 20 : 2), clock, cancellation);
-            return new(value != null, value);
+            return value == null ? new(HttpStatusCode.NotFound) : new(HttpStatusCode.OK, value);
         }
-        catch (TimeoutException) { return new(true, null); }
-        finally { lock (gate) { if (box.Waiter == waiter) box.Waiter = null; } }
+        catch (TimeoutException) { return new(HttpStatusCode.NoContent); }
+        finally
+        {
+            lock (gate)
+            {
+                box.Waiter = null;
+                waitingPolls--;
+            }
+        }
     }
 
     internal bool Close(string number, byte[] owner)
@@ -252,18 +290,22 @@ internal sealed class RoomDirectory(TimeProvider clock)
         lock (gate) RemoveExpired(clock.GetTimestamp());
     }
 
+    private bool ExpireRoom(string number, Reservation room, long now)
+    {
+        if (clock.GetElapsedTime(room.AdmittedAt, now) >= Lifetime)
+        {
+            Retire(number, room);
+            numbers.Remove(number);
+            return true;
+        }
+        if (room.Entry?.AnsweredAt is not { } at || clock.GetElapsedTime(at, now) < AnswerRetention) return false;
+        Retire(number, room);
+        return true;
+    }
+
     private void RemoveExpired(long now)
     {
-        foreach (var (number, reservation) in numbers)
-        {
-            if (clock.GetElapsedTime(reservation.AdmittedAt, now) >= Lifetime)
-            {
-                Retire(number, reservation);
-                numbers.Remove(number);
-            }
-            else if (reservation.Entry?.AnsweredAt is { } at && clock.GetElapsedTime(at, now) >= AnswerRetention)
-                Retire(number, reservation);
-        }
+        foreach (var (number, room) in numbers) ExpireRoom(number, room, now);
         foreach (var (proof, value) in proofs)
             if (clock.GetElapsedTime(value.At, now) >= Lifetime) proofs.Remove(proof);
         proofRequests.Expire(now, clock);

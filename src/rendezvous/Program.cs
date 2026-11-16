@@ -11,7 +11,6 @@ namespace TH12Coop.Rendezvous;
 internal static class Program
 {
     private const int ConnectionLimit = 64;
-    private const int PollLimit = 48;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         MaxDepth = 6,
@@ -55,9 +54,9 @@ internal static class Program
     }
 
     internal static WebApplication Build(X509Certificate2 leaf, X509Certificate2Collection chain,
-        IPAddress? listenAddress, int port, TimeProvider clock, int pollLimit = PollLimit)
+        IPAddress? listenAddress, int port, TimeProvider clock, int pollLimit = RoomDirectory.MaxWaitingPolls)
     {
-        if (pollLimit is < 1 or > PollLimit) throw new ArgumentOutOfRangeException(nameof(pollLimit));
+        if (pollLimit is < 1 or > RoomDirectory.MaxWaitingPolls) throw new ArgumentOutOfRangeException(nameof(pollLimit));
         // Configure only this socket. In particular, environment settings must not enable HTTP,
         // forwarded headers, request logging or the developer exception page.
         var builder = WebApplication.CreateEmptyBuilder(new() { EnvironmentName = Environments.Production });
@@ -86,15 +85,14 @@ internal static class Program
             else kestrel.Listen(listenAddress, port, Secure);
         });
         var app = builder.Build();
-        var directory = new RoomDirectory(clock);
-        var polls = new SemaphoreSlim(pollLimit, pollLimit);
+        var directory = new RoomDirectory(clock, pollLimit);
         var timer = clock.CreateTimer(_ => directory.RemoveExpired(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
         app.Lifetime.ApplicationStopped.Register(timer.Dispose);
-        app.Run(context => Dispatch(context, directory, polls));
+        app.Run(context => Dispatch(context, directory));
         return app;
     }
 
-    private static async Task Dispatch(HttpContext context, RoomDirectory directory, SemaphoreSlim polls)
+    internal static async Task Dispatch(HttpContext context, RoomDirectory directory)
     {
         var request = context.Request;
         var response = context.Response;
@@ -113,9 +111,14 @@ internal static class Program
             _ => null
         };
         if (op == null || context.Connection.RemoteIpAddress is not { } source) { response.StatusCode = 404; return; }
-        if (op is Operation.Offer or Operation.Receive) response.Headers.Connection = "close";
+        bool poll = op is Operation.Offer or Operation.Receive;
+        if (poll) response.Headers.Connection = "close";
         if (!request.HasJsonContentType()) { response.StatusCode = 415; return; }
-        if (!directory.Admit(op.Value, source, out var admittedAt))
+        long admittedAt = 0;
+        bool allowed = poll
+            ? directory.HasPollBudget(op == Operation.Offer, source)
+            : directory.Admit(op.Value, source, out admittedAt);
+        if (!allowed)
         { response.StatusCode = StatusCodes.Status429TooManyRequests; return; }
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
         deadline.CancelAfter(TimeSpan.FromSeconds(5));
@@ -145,33 +148,7 @@ internal static class Program
                     return;
                 case Operation.Offer:
                 case Operation.Receive:
-                    string number, key;
-                    var host = op == Operation.Offer;
-                    if (host)
-                    {
-                        var owner = await JsonSerializer.DeserializeAsync<Owner>(request.Body, Json, deadline.Token);
-                        if (owner == null) break;
-                        (number, key) = (owner.Number, owner.OwnerToken);
-                    }
-                    else
-                    {
-                        var guest = await JsonSerializer.DeserializeAsync<Guest>(request.Body, Json, deadline.Token);
-                        if (guest == null) break;
-                        (number, key) = (guest.Number, guest.GuestToken);
-                    }
-                    if (!RoomDirectory.ValidNumber(number) || !RoomDirectory.ValidToken(key)) break;
-                    // Never queue a request for a poll slot: that would still hold a Kestrel connection.
-                    if (!polls.Wait(0)) { response.StatusCode = 503; return; }
-                    try
-                    {
-                        var poll = await directory.Wait(number, Convert.FromHexString(key), host, context.RequestAborted);
-                        if (!poll.Exists) { response.StatusCode = 404; return; }
-                        if (poll.Description == null) { response.StatusCode = 204; return; }
-                        using var write = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
-                        write.CancelAfter(TimeSpan.FromSeconds(5));
-                        await response.WriteAsJsonAsync(poll.Description, Json, write.Token);
-                    }
-                    finally { polls.Release(); }
+                    await PollCandidates(context, directory, op.Value, source, deadline.Token);
                     return;
                 case Operation.Answer:
                     var answer = await JsonSerializer.DeserializeAsync<Answer>(request.Body, Json, deadline.Token);
@@ -192,5 +169,45 @@ internal static class Program
         catch (Microsoft.AspNetCore.Http.BadHttpRequestException error) { response.StatusCode = error.StatusCode; return; }
         catch (OperationCanceledException) { context.Abort(); return; }
         response.StatusCode = 400;
+    }
+
+    private static async Task PollCandidates(HttpContext context, RoomDirectory directory, Operation op,
+        IPAddress source, CancellationToken readDeadline)
+    {
+        string? number = null, key = null;
+        int invalidStatus = StatusCodes.Status400BadRequest;
+        bool host = op == Operation.Offer;
+        try
+        {
+            if (host)
+            {
+                var owner = await JsonSerializer.DeserializeAsync<Owner>(context.Request.Body, Json, readDeadline);
+                if (owner != null) (number, key) = (owner.Number, owner.OwnerToken);
+            }
+            else
+            {
+                var guest = await JsonSerializer.DeserializeAsync<Guest>(context.Request.Body, Json, readDeadline);
+                if (guest != null) (number, key) = (guest.Number, guest.GuestToken);
+            }
+        }
+        catch (JsonException) { }
+        catch (Microsoft.AspNetCore.Http.BadHttpRequestException error) { invalidStatus = error.StatusCode; }
+        catch (Exception error) when (error is OperationCanceledException or IOException)
+        {
+            directory.Admit(op, source, out _);
+            throw;
+        }
+        if (!RoomDirectory.ValidNumber(number) || !RoomDirectory.ValidToken(key))
+        {
+            context.Response.StatusCode = directory.Admit(op, source, out _) ? invalidStatus : StatusCodes.Status429TooManyRequests;
+            return;
+        }
+
+        var result = await directory.Wait(number, Convert.FromHexString(key), host, source, context.RequestAborted);
+        context.Response.StatusCode = (int)result.Status;
+        if (result.Description == null) return;
+        using var write = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
+        write.CancelAfter(TimeSpan.FromSeconds(5));
+        await context.Response.WriteAsJsonAsync(result.Description, Json, write.Token);
     }
 }
