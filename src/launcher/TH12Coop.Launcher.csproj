@@ -13,5 +13,6 @@
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="TH12Coop.Phase1Tests" />
+    <PackageReference Include="Proxeno.Keryx.Ice" Version="[0.4.0]" />
   </ItemGroup>
 </Project>

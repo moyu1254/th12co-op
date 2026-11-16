@@ -13,7 +13,7 @@ internal static partial class SelfTests
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
-            Expect(request.RequestUri?.AbsolutePath == "/v1/rooms/join" && request.Method == HttpMethod.Post,
+            Expect(request.RequestUri?.AbsolutePath == "/v2/rooms/receive" && request.Method == HttpMethod.Post,
                 "fixed rendezvous endpoint");
             return Task.FromResult(respond());
         }
@@ -26,25 +26,28 @@ internal static partial class SelfTests
             ExpectThrows<IOException>(() => new RendezvousClient(origin).Dispose());
         foreach (var address in new[] { "10.0.0.1", "169.254.1.2", "255.255.255.255", "127.0.0.1", "::ffff:127.0.0.1",
             "224.0.0.1", "100.64.1.1", "fd00::1", "fe80::1", "ff01::1", "2002:7f00:1::1", "2001:db8::1" })
-            Expect(!RendezvousClient.IsAllowedCandidate(IPAddress.Parse(address), false), "non-public room candidate");
+            Expect(!IceDescription.AddressAllowed(IPAddress.Parse(address), false), "non-public room candidate");
         foreach (var address in new[] { "1.1.1.1", "2606:4700:4700::1111" })
-            Expect(RendezvousClient.IsAllowedCandidate(IPAddress.Parse(address), false), "public unicast room candidate");
+            Expect(IceDescription.AddressAllowed(IPAddress.Parse(address), false), "public unicast room candidate");
         using var identity = RoomIdentity.Create();
-        HttpResponseMessage JsonReply(string address, int port) => new(HttpStatusCode.OK)
-            { Content = JsonContent.Create(new { address, port, invite = identity.Invite }) };
+        static IceDescription Ice(string address, int port) => new("abcd", new string('A', 24), [new(address, port)]);
+        HttpResponseMessage JsonReply(string address, int port) => new(HttpStatusCode.OK) { Content = JsonContent.Create(Ice(address, port)) };
         async Task RejectReply(Func<HttpResponseMessage> reply)
         {
             using var service = new RendezvousClient("https://rooms.invalid", new RoomReply(reply));
-            await ExpectThrowsAsync<IOException>(() => service.Join("000123", token));
+            await ExpectThrowsAsync<IOException>(() => service.WaitAnswer("000123", new string('A', 64), token));
         }
         await RejectReply(() => JsonReply("127.0.0.1", 3012));
         await RejectReply(() => JsonReply("example.invalid", 3012));
         await RejectReply(() => JsonReply("1.1.1.1", 443));
+        await RejectReply(() => new(HttpStatusCode.OK) { Content = JsonContent.Create(Ice("1.1.1.1", 3012) with { Password = "short" }) });
+        await RejectReply(() => new(HttpStatusCode.OK) { Content = JsonContent.Create(Ice("1.1.1.1", 3012) with
+            { Candidates = Enumerable.Range(0, 5).Select(i => new IceEndpoint("1.1.1.1", 3012 + i)).ToArray() }) });
         await RejectReply(() => new(HttpStatusCode.Found) { Headers = { Location = new Uri("https://elsewhere.invalid") } });
-        await RejectReply(() => new(HttpStatusCode.OK) { Content = new StringContent(new string('x', 2048)) });
-        using (var service = new RendezvousClient("https://localhost", new RoomReply(() => JsonReply("127.0.0.1", 3012))))
-            Expect((await service.Join("000123", token)).Address == "127.0.0.1", "explicit loopback fixture");
-        passed.Add("Number resolution restricts HTTPS origin, response size and numeric public peer on TCP 3012");
+        await RejectReply(() => new(HttpStatusCode.OK) { Content = new StringContent(new string('x', 4097)) });
+        using (var service = new RendezvousClient("https://localhost", new RoomReply(() => JsonReply("127.0.0.1", 53012))))
+            Expect((await service.WaitAnswer("000123", new string('A', 64), token)).Candidates.Single().Port == 53012, "explicit loopback fixture and remapped UDP port");
+        passed.Add("ICE signaling restricts HTTPS origin, response size, ICE credentials and numeric public UDP candidates");
 
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();

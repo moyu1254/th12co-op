@@ -24,22 +24,24 @@ internal static class ServerTests
 
     internal static async Task<int> Run()
     {
-        var invite = "T12L5." + Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(64));
+        var invite = "T12L6." + Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(64));
         SourceLimits(invite);
         IPv6PrefixLimits();
         IndependentOperationLimits();
         RollingExpiration();
         ReservationCapacity(invite);
         DelayedRegistration(invite);
+        await Signaling(invite);
         Console.WriteLine("PASS 48 reservations per admission window, expiry from admission, IPv4/IPv6 prefix budgets and independent global limits");
         await HttpsLifecycle(invite);
-        Console.WriteLine("PASS HTTPS create, atomic claim, owner cancellation and request bounds");
+        Console.WriteLine("PASS HTTPS address proof, single-use join, authenticated ICE exchange, cancellation and request bounds");
         return 0;
     }
 
     private static void IPv6PrefixLimits()
     {
-        foreach (var (operation, per56, per48) in new[] { (Operation.Create, 8, 12), (Operation.Join, 12, 24), (Operation.Close, 24, 36) })
+        foreach (var (operation, per56, per48) in new[] { (Operation.Create, 8, 12), (Operation.Join, 12, 24), (Operation.Proof, 48, 72),
+            (Operation.Offer, 24, 36), (Operation.Answer, 24, 36), (Operation.Receive, 24, 36), (Operation.Close, 24, 36) })
         {
             var rooms = new RoomDirectory(new ManualTime());
             int admitted = 0;
@@ -59,9 +61,10 @@ internal static class ServerTests
     {
         var rooms = new RoomDirectory(new ManualTime());
         var source = 0;
-        foreach (var (op, limit) in new[] { (Operation.Create, 48), (Operation.Close, 96), (Operation.Join, 120) })
+        foreach (var (op, limit) in new[] { (Operation.Create, 48), (Operation.Close, 96), (Operation.Join, 120),
+            (Operation.Proof, 384), (Operation.Offer, 96), (Operation.Answer, 96), (Operation.Receive, 120) })
         {
-            // Each accepted request comes from a distinct /48. All 264 budgeted requests fit,
+            // Each accepted request comes from a distinct /48. All budgeted requests fit,
             // including new sources arriving after the old 256-source table would have filled.
             for (var i = 0; i < limit; i++)
                 Check(rooms.Admit(op, IPAddress.Parse($"2001:db8:{++source:x}::1"), out _), "independent operation capacity");
@@ -99,11 +102,11 @@ internal static class ServerTests
             var numbers = new HashSet<string>();
             for (var i = 0; i < sources.Length; i++)
             {
-                var room = rooms.Create(invite, sources[i], admissions[i])
+                var room = rooms.Create(invite, admissions[i])
                     ?? throw new InvalidOperationException("accepted create could not reserve a number");
                 Check(numbers.Add(room.Number), "cancelled numbers stay reserved until expiry");
                 Check(rooms.Admit(Operation.Close, sources[i], out _), "owner close within budget");
-                Check(rooms.Take(room.Number, Convert.FromHexString(room.OwnerToken)) != null, "owner retired its number");
+                Check(rooms.Close(room.Number, Convert.FromHexString(room.OwnerToken)), "owner retired its number");
             }
             Check(!rooms.Admit(Operation.Create, IPAddress.Loopback, out _), "49th create denied at admission");
         }
@@ -117,11 +120,11 @@ internal static class ServerTests
         Check(rooms.Admit(Operation.Create, source, out var issuedAt), "admit delayed registration");
         Check(rooms.Admit(Operation.Create, source, out var unfinishedAt), "admit unfinished registration");
         clock.Now += TimeSpan.TicksPerSecond;
-        var issued = rooms.Create(invite, source, issuedAt) ?? throw new InvalidOperationException("delayed registration failed");
+        var issued = rooms.Create(invite, issuedAt) ?? throw new InvalidOperationException("delayed registration failed");
         Check(RoomDirectory.ValidNumber(issued.Number) && RoomDirectory.ValidToken(issued.OwnerToken), "credential encoding");
         clock.Now = RoomDirectory.Lifetime.Ticks;
-        Check(rooms.Admit(Operation.Join, source, out _) && rooms.Take(issued.Number) == null, "TTL starts at admission");
-        Check(rooms.Create(invite, source, unfinishedAt) == null, "expired admission cannot issue a number");
+        Check(rooms.Admit(Operation.Join, source, out _) && !rooms.Close(issued.Number, Convert.FromHexString(issued.OwnerToken)), "TTL starts at admission");
+        Check(rooms.Create(invite, unfinishedAt) == null, "expired admission cannot issue a number");
     }
 
     private static void SourceLimits(string invite)
@@ -141,6 +144,48 @@ internal static class ServerTests
         Check(rooms.Admit(Operation.Join, ipv6, out _), "budget replenished");
         for (var i = 0; i < 4; ++i) Check(rooms.Admit(Operation.Create, source, out _), "individual create budget");
         Check(!rooms.Admit(Operation.Create, source.MapToIPv6(), out _), "IPv4-mapped address");
+    }
+
+    private static IceDescription Description(params IceEndpoint[] endpoints) =>
+        new("abcd", new string('A', 24), endpoints);
+
+    private static async Task Signaling(string invite)
+    {
+        var clock = new ManualTime();
+        var rooms = new RoomDirectory(clock);
+        var v4 = IPAddress.Parse("8.8.8.8");
+        var v6 = IPAddress.Parse("2606:4700::1");
+        string Proof(IPAddress source) => rooms.IssueProof(source, clock.Now)!.Token;
+        var offer = new VerifiedIce(Description(new(v6.ToString(), 33001), new(v4.ToString(), 43001)), [Proof(v4), Proof(v6)]);
+        var answer = new VerifiedIce(Description(new IceEndpoint(v4.ToString(), 33002)), [Proof(v4)]);
+        var room = rooms.Create(invite, clock.Now)!;
+        var owner = Convert.FromHexString(room.OwnerToken);
+        var wait = rooms.Wait(room.Number, owner, true, default);
+        Check(!wait.IsCompleted && await rooms.Wait(room.Number, owner, true, default) == null, "one owner waiter");
+        Check(rooms.Join(room.Number, offer with { Proofs = [Proof(v4)] }, v4) == null,
+            "cannot publish a second family without its proof");
+        var claim = rooms.Join(room.Number, offer, v4)!;
+        var guest = Convert.FromHexString(claim.GuestToken);
+        Check(await wait == offer.Description && rooms.Join(room.Number, offer, v4) == null,
+            "both proven address families reach one owner");
+        Check(await rooms.Wait(room.Number, guest, true, default) == null &&
+              await rooms.Wait(room.Number, owner, false, default) == null &&
+              !rooms.Answer(room.Number, guest, answer, v4), "capability cannot switch roles");
+        var receive = rooms.Wait(room.Number, guest, false, default);
+        Check(!receive.IsCompleted && rooms.Answer(room.Number, owner, answer, v4) &&
+            await receive == answer.Description && !rooms.Answer(room.Number, owner, answer, v4) &&
+            await rooms.Wait(room.Number, guest, false, default) == null, "answer wakes guest and retires room");
+        var closing = rooms.Create(invite, clock.Now)!;
+        var owner2 = Convert.FromHexString(closing.OwnerToken);
+        var pending = rooms.Wait(closing.Number, owner2, true, default);
+        Check(!rooms.Close(closing.Number, guest) && !pending.IsCompleted &&
+            rooms.Close(closing.Number, owner2) && await pending == null, "close only wakes the owner's room");
+        var expiring = rooms.Create(invite, clock.Now)!;
+        var expired = rooms.Wait(expiring.Number, Convert.FromHexString(expiring.OwnerToken), true, default);
+        clock.Now += RoomDirectory.Lifetime.Ticks;
+        rooms.RemoveExpired();
+        var fresh = rooms.Create(invite, clock.Now)!;
+        Check(await expired == null && rooms.Join(fresh.Number, offer, v4) == null, "expiry drops pending waits and proofs");
     }
 
     internal static X509Certificate2 TestCertificate()
@@ -171,41 +216,54 @@ internal static class ServerTests
             };
             using var client = new HttpClient(handler) { BaseAddress = new(app.Urls.Single()), Timeout = TimeSpan.FromSeconds(10) };
             client.DefaultRequestHeaders.Add("X-Forwarded-For", "192.0.2.44");
+            using var phase1 = await client.PostAsJsonAsync("/v1/rooms/join", new { number = "000000" });
+            Check(phase1.StatusCode == HttpStatusCode.NotFound, "old API rejected");
+            using var proofResponse = await client.PostAsJsonAsync("/v2/rooms/proof", new { });
+            var proof = (await proofResponse.Content.ReadFromJsonAsync<AddressProof>())!;
+            Check(proof.Address == IPAddress.Loopback.ToString(), "proof uses socket source, ignores forwarded IP");
+            var ice = new VerifiedIce(Description(new IceEndpoint(proof.Address, 3012)), [proof.Token]);
             async Task<Registration> Create()
             {
-                using var response = await client.PostAsJsonAsync("/v1/rooms/create", new { invite, port = RoomDirectory.Port });
+                using var response = await client.PostAsJsonAsync("/v2/rooms/create", new { invite });
                 Check(response.StatusCode == HttpStatusCode.OK && response.Headers.CacheControl?.NoStore == true, "create over TLS");
                 return (await response.Content.ReadFromJsonAsync<Registration>())!;
             }
             async Task Close(Registration registration)
             {
-                using var response = await client.PostAsJsonAsync("/v1/rooms/close", registration);
+                using var response = await client.PostAsJsonAsync("/v2/rooms/close", registration);
                 Check(response.StatusCode == HttpStatusCode.NoContent, "idempotent close");
             }
-            async Task<Candidate?> Join(string number)
+            async Task<Claim?> Join(string number)
             {
-                using var response = await client.PostAsJsonAsync("/v1/rooms/join", new { number });
+                using var response = await client.PostAsJsonAsync("/v2/rooms/join", new { number, offer = ice });
                 if (response.StatusCode == HttpStatusCode.NotFound) return null;
                 Check(response.StatusCode == HttpStatusCode.OK, "join response");
-                return await response.Content.ReadFromJsonAsync<Candidate>();
+                return await response.Content.ReadFromJsonAsync<Claim>();
             }
             var first = await Create();
             await Close(first with { OwnerToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)) });
             var matches = await Task.WhenAll(Join(first.Number), Join(first.Number));
-            Check(matches.OfType<Candidate>().Single() == new Candidate(invite, IPAddress.Loopback.ToString(), RoomDirectory.Port),
-                "one guest, original invite and observed socket address");
+            var claim = matches.OfType<Claim>().Single();
+            Check(claim.Invite == invite && RoomDirectory.ValidToken(claim.GuestToken), "one guest, original invite");
+            using var offer = await client.PostAsJsonAsync("/v2/rooms/offer", first);
+            Check(offer.StatusCode == HttpStatusCode.OK, "owner obtains offer");
+            using var answered = await client.PostAsJsonAsync("/v2/rooms/answer", new { first.Number, first.OwnerToken, ice });
+            Check(answered.StatusCode == HttpStatusCode.NoContent, "owner submits answer");
+            using var receive = await client.PostAsJsonAsync("/v2/rooms/receive", new { first.Number, claim.GuestToken });
+            var received = await receive.Content.ReadFromJsonAsync<IceDescription>();
+            Check(received?.Candidates.Single() == ice.Description.Candidates.Single(), "claimed guest obtains answer");
             var second = await Create();
             await Close(second);
             await Close(second);
             Check(await Join(second.Number) == null, "owner can revoke");
-            using var old = await client.PostAsJsonAsync("/v1/rooms/create", new { invite = "T12L4." + invite[6..], port = RoomDirectory.Port });
+            using var old = await client.PostAsJsonAsync("/v2/rooms/create", new { invite = "T12L5." + invite[6..] });
             Check(old.StatusCode == HttpStatusCode.BadRequest, "old invite");
-            using var oversizedBody = new StringContent(new string(' ', 513), Encoding.UTF8, "application/json");
-            using var oversized = await client.PostAsync("/v1/rooms/join", oversizedBody);
+            using var oversizedBody = new StringContent(new string(' ', 4097), Encoding.UTF8, "application/json");
+            using var oversized = await client.PostAsync("/v2/rooms/join", oversizedBody);
             Check(oversized.StatusCode == HttpStatusCode.RequestEntityTooLarge, "oversized body");
-            using var overrideAddress = await client.PostAsJsonAsync("/v1/rooms/create", new { invite, port = RoomDirectory.Port, address = "192.0.2.44" });
+            using var overrideAddress = await client.PostAsJsonAsync("/v2/rooms/create", new { invite, address = "192.0.2.44" });
             Check(overrideAddress.StatusCode == HttpStatusCode.BadRequest, "unexpected address field");
-            using var limited = await client.PostAsJsonAsync("/v1/rooms/create", new { invite, port = RoomDirectory.Port });
+            using var limited = await client.PostAsJsonAsync("/v2/rooms/create", new { invite });
             Check(limited.StatusCode == HttpStatusCode.TooManyRequests, "exhausted create budget returns 429");
         }
         finally { await app.StopAsync(); }

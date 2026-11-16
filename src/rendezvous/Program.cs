@@ -12,16 +12,21 @@ internal static class Program
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
-        MaxDepth = 2,
+        MaxDepth = 6,
+        RespectRequiredConstructorParameters = true,
+        RespectNullableAnnotations = true,
         PropertyNameCaseInsensitive = false,
         NumberHandling = JsonNumberHandling.Strict,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
         AllowDuplicateProperties = false
     };
 
-    private sealed record Create(string Invite, int Port);
-    private sealed record Join(string Number);
-    private sealed record Close(string Number, string OwnerToken);
+    private sealed record Empty();
+    private sealed record Create(string Invite);
+    private sealed record Join(string Number, VerifiedIce Offer);
+    private sealed record Owner(string Number, string OwnerToken);
+    private sealed record Guest(string Number, string GuestToken);
+    private sealed record Answer(string Number, string OwnerToken, VerifiedIce Ice);
 
     private static async Task<int> Main(string[] args)
     {
@@ -58,7 +63,7 @@ internal static class Program
         {
             kestrel.AddServerHeader = false;
             kestrel.Limits.MaxConcurrentConnections = 64;
-            kestrel.Limits.MaxRequestBodySize = 512;
+            kestrel.Limits.MaxRequestBodySize = 4096;
             kestrel.Limits.MaxRequestLineSize = 1024;
             kestrel.Limits.MaxRequestHeadersTotalSize = 4096;
             kestrel.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(5);
@@ -94,9 +99,13 @@ internal static class Program
         { response.StatusCode = 404; return; }
         Operation? op = request.Path.Value switch
         {
-            "/v1/rooms/create" => Operation.Create,
-            "/v1/rooms/join" => Operation.Join,
-            "/v1/rooms/close" => Operation.Close,
+            "/v2/rooms/create" => Operation.Create,
+            "/v2/rooms/join" => Operation.Join,
+            "/v2/rooms/close" => Operation.Close,
+            "/v2/rooms/proof" => Operation.Proof,
+            "/v2/rooms/offer" => Operation.Offer,
+            "/v2/rooms/answer" => Operation.Answer,
+            "/v2/rooms/receive" => Operation.Receive,
             _ => null
         };
         if (op == null || context.Connection.RemoteIpAddress is not { } source) { response.StatusCode = 404; return; }
@@ -111,22 +120,61 @@ internal static class Program
             {
                 case Operation.Create:
                     var create = await JsonSerializer.DeserializeAsync<Create>(request.Body, Json, deadline.Token);
-                    if (create?.Port != RoomDirectory.Port || !RoomDirectory.ValidInvite(create.Invite)) break;
-                    var registration = directory.Create(create.Invite, source, admittedAt);
+                    if (create == null || !RoomDirectory.ValidInvite(create.Invite)) break;
+                    var registration = directory.Create(create.Invite, admittedAt);
                     if (registration == null) { response.StatusCode = StatusCodes.Status408RequestTimeout; return; }
                     await response.WriteAsJsonAsync(registration, Json, deadline.Token);
                     return;
                 case Operation.Join:
                     var join = await JsonSerializer.DeserializeAsync<Join>(request.Body, Json, deadline.Token);
                     if (join == null || !RoomDirectory.ValidNumber(join.Number)) break;
-                    var candidate = directory.Take(join.Number);
+                    var candidate = directory.Join(join.Number, join.Offer, source);
                     if (candidate == null) { response.StatusCode = 404; return; }
                     await response.WriteAsJsonAsync(candidate, Json, deadline.Token);
                     return;
+                case Operation.Proof:
+                    if (await JsonSerializer.DeserializeAsync<Empty>(request.Body, Json, deadline.Token) == null) break;
+                    var proof = directory.IssueProof(source, admittedAt);
+                    if (proof == null) break;
+                    await response.WriteAsJsonAsync(proof, Json, deadline.Token);
+                    return;
+                case Operation.Offer:
+                case Operation.Receive:
+                    string number, key;
+                    var host = op == Operation.Offer;
+                    if (host)
+                    {
+                        var owner = await JsonSerializer.DeserializeAsync<Owner>(request.Body, Json, deadline.Token);
+                        if (owner == null) break;
+                        (number, key) = (owner.Number, owner.OwnerToken);
+                    }
+                    else
+                    {
+                        var guest = await JsonSerializer.DeserializeAsync<Guest>(request.Body, Json, deadline.Token);
+                        if (guest == null) break;
+                        (number, key) = (guest.Number, guest.GuestToken);
+                    }
+                    if (!RoomDirectory.ValidNumber(number) || !RoomDirectory.ValidToken(key)) break;
+                    // A single authenticated waiter per role. Expiry/close completes the task.
+                    var description = await directory.Wait(number, Convert.FromHexString(key), host, context.RequestAborted);
+                    if (description == null) { response.StatusCode = 404; return; }
+                    using (var write = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted))
+                    {
+                        write.CancelAfter(TimeSpan.FromSeconds(5));
+                        await response.WriteAsJsonAsync(description, Json, write.Token);
+                    }
+                    return;
+                case Operation.Answer:
+                    var answer = await JsonSerializer.DeserializeAsync<Answer>(request.Body, Json, deadline.Token);
+                    if (answer == null || !RoomDirectory.ValidNumber(answer.Number) || !RoomDirectory.ValidToken(answer.OwnerToken)) break;
+                    if (!directory.Answer(answer.Number, Convert.FromHexString(answer.OwnerToken), answer.Ice, source))
+                    { response.StatusCode = 404; return; }
+                    response.StatusCode = 204;
+                    return;
                 case Operation.Close:
-                    var close = await JsonSerializer.DeserializeAsync<Close>(request.Body, Json, deadline.Token);
+                    var close = await JsonSerializer.DeserializeAsync<Owner>(request.Body, Json, deadline.Token);
                     if (close == null || !RoomDirectory.ValidNumber(close.Number) || !RoomDirectory.ValidToken(close.OwnerToken)) break;
-                    directory.Take(close.Number, Convert.FromHexString(close.OwnerToken));
+                    directory.Close(close.Number, Convert.FromHexString(close.OwnerToken));
                     response.StatusCode = 204;
                     return;
             }

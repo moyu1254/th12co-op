@@ -8,6 +8,8 @@ TH12 CO-OPのソースコードと付属ドキュメントは [MIT License](LICE
 
 ## 同梱ランタイム
 
+部屋番号の UDP 接続には [Keryx 0.4.0](https://github.com/Proxeno/keryx/tree/3601d71bb5758ed98acea07bb07d5e4df886340b) の Core、STUN、ICE、および依存 DLL の TURN を同梱します。Copyright (c) Keryx contributors。ライセンスは [Apache License 2.0](licenses/Keryx-LICENSE.txt) です。配布 ZIP では `dist/licenses/` にも収録します。
+
 自己完結版ZIPの.NETランタイムには、それぞれのライセンスが適用されます。ビルド時に実際に使用したランタイムパッケージからライセンス・第三者表記を `dist/licenses/` へコピーし、配布ZIPにも同梱します。
 
 ## 照合に使用した資料

@@ -83,8 +83,8 @@ class PackageTests(unittest.TestCase):
             with self.assertRaisesRegex(verifier.InvalidPackage, "Required distribution inputs"):
                 verifier.expected_manifest()
 
-    def test_protocol_5_invite_is_kept_out_of_source_and_archive(self):
-        invite = b"T12L5." + b"A" * 86
+    def test_current_invite_is_kept_out_of_source_and_archive(self):
+        invite = b"T12L6." + b"A" * 86
         self.assertRegex(invite, verifier.SECRET)
         self.write("docs/reviewed.md", invite)
         result = self.package()
