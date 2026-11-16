@@ -254,10 +254,11 @@ internal sealed class LauncherForm : Form
         copy.Enabled = true;
     }
 
-    private async Task<bool> ConfirmPeer(string phrase, CancellationToken token)
+    private async Task<bool> ConfirmPeer(string phrase, bool usesRelay, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        SetStatus($"通話などで相手と照合してください： {phrase}");
+        var route = usesRelay ? "WSS 中継" : "直接 QUIC";
+        SetStatus($"{route}で接続しました。通話などで相手と照合してください： {phrase}");
         copy.Enabled = false;
         var choice = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var startLabel = start.Text;
