@@ -34,7 +34,7 @@ jobs:
         run: ./scripts/Test-Repository.ps1 -RunSelfTest
       - name: Test HTTPS rendezvous directory
         run: dotnet run --project src/rendezvous -c Release -- --self-test
-      - name: Test numbered UDP sessions over local HTTPS, STUN, ICE and QUIC
+      - name: Test numbered sessions over direct QUIC and fallback WSS
         run: dotnet run --project src/phase1-tests -c Release
       - name: Verify owned-process cleanup failure handling with fake APIs
         run: python scripts/test_native_cleanup.py --out build/native-cleanup-results.json

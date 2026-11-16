@@ -5,6 +5,12 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        try { return Run(args); }
+        finally { RelayStream.WaitForCloseOutput(TimeSpan.FromSeconds(3)); }
+    }
+
+    private static int Run(string[] args)
+    {
         if (args.Any(argument => argument is "--lockstep-test" or "--disconnect-test" or "--offline-start-test" or "--owner-exit-test" or "--startup-guard-test"))
             Native.SetErrorMode(0x8003); // Process-only; owned children inherit noninteractive loader errors.
         if (args.Contains("--self-test"))

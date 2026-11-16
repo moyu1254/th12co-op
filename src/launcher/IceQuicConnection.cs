@@ -12,8 +12,11 @@ namespace TH12Coop;
 // copy QUIC datagrams between that one path and a private loopback endpoint.
 internal sealed class IceQuicConnection : IAsyncDisposable
 {
-    private static readonly SslApplicationProtocol Alpn = new("th12coop/6");
-    private readonly Socket local = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+    private static readonly SslApplicationProtocol Alpn = new($"th12coop/{SecureChannel.ProtocolVersion}");
+    // QUIC aborts a pending stream operation when its cancellation token fires.
+    // Keep an expired path check distinct from the explicit authentication rejection (1).
+    private const long PathUnavailable = 2;
+    private readonly Socket local;
     private readonly CancellationTokenSource stopping = new();
     private Task pumps = Task.CompletedTask;
     private IPEndPoint? quicEndpoint;
@@ -25,13 +28,27 @@ internal sealed class IceQuicConnection : IAsyncDisposable
     private bool authenticated;
     private int disposed;
 
-    internal IceQuicConnection() => local.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+    internal IceQuicConnection()
+    {
+        Socket? socket = null;
+        try
+        {
+            socket = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+            local = socket;
+        }
+        catch (Exception e) when (e is SocketException or PlatformNotSupportedException)
+        {
+            socket?.Dispose();
+            stopping.Dispose();
+            throw new DirectPathUnavailableException("QUIC のローカル UDP ポートを開けませんでした。", e);
+        }
+    }
     private IPEndPoint LocalEndpoint => (IPEndPoint)local.LocalEndPoint!;
 
-    internal async Task<SecureChannel> Accept(IcePath path, RoomIdentity identity, CancellationToken token)
+    private async ValueTask<QuicListener> Listen(RoomIdentity identity, CancellationToken token)
     {
-        if (!QuicListener.IsSupported) throw Unavailable();
-        await using var listener = await QuicListener.ListenAsync(new()
+        var options = new QuicListenerOptions
         {
             ListenEndPoint = new IPEndPoint(IPAddress.Loopback, 0), ListenBacklog = 1,
             ApplicationProtocols = [Alpn],
@@ -40,7 +57,7 @@ internal sealed class IceQuicConnection : IAsyncDisposable
                 if (!connection.RemoteEndPoint.Equals(LocalEndpoint)) throw new AuthenticationException();
                 return ValueTask.FromResult(new QuicServerConnectionOptions
                 {
-                    DefaultStreamErrorCode = 1, DefaultCloseErrorCode = 1,
+                    DefaultStreamErrorCode = PathUnavailable, DefaultCloseErrorCode = 1,
                     MaxInboundBidirectionalStreams = 1, MaxInboundUnidirectionalStreams = 0,
                     IdleTimeout = TimeSpan.FromSeconds(45), KeepAliveInterval = TimeSpan.FromSeconds(10),
                     ServerAuthenticationOptions = new()
@@ -50,7 +67,16 @@ internal sealed class IceQuicConnection : IAsyncDisposable
                     }
                 });
             }
-        }, token);
+        };
+        try { return await QuicListener.ListenAsync(options, token); }
+        catch (Exception e) when (!token.IsCancellationRequested && e is SocketException or QuicException or PlatformNotSupportedException)
+        { throw new DirectPathUnavailableException("QUIC のローカル待受を開始できませんでした。", e); }
+    }
+
+    internal async Task<SecureChannel> Accept(IcePath path, RoomIdentity identity, CancellationToken token)
+    {
+        if (!QuicListener.IsSupported) throw Unavailable();
+        await using var listener = await Listen(identity, token);
         quicEndpoint = listener.LocalEndPoint;
         StartPumps(path);
         using var handshake = HandshakeDeadline(token);
@@ -62,7 +88,8 @@ internal sealed class IceQuicConnection : IAsyncDisposable
             authenticated = true;
             return channel;
         }
-        catch (Exception) when (!token.IsCancellationRequested && GetPathFailure() is { } failure) { throw failure; }
+        catch (Exception e) when (!token.IsCancellationRequested && NoQuicPath(e))
+        { throw await AbandonPath(e); }
         catch { stream?.Abort(QuicAbortDirection.Both, 1); throw; }
     }
 
@@ -77,7 +104,7 @@ internal sealed class IceQuicConnection : IAsyncDisposable
             connection = await QuicConnection.ConnectAsync(new()
             {
                 RemoteEndPoint = LocalEndpoint, LocalEndPoint = new IPEndPoint(IPAddress.Loopback, 0),
-                DefaultStreamErrorCode = 1, DefaultCloseErrorCode = 1,
+                DefaultStreamErrorCode = PathUnavailable, DefaultCloseErrorCode = 1,
                 MaxInboundBidirectionalStreams = 0, MaxInboundUnidirectionalStreams = 0,
                 IdleTimeout = TimeSpan.FromSeconds(45), KeepAliveInterval = TimeSpan.FromSeconds(10),
                 ClientAuthenticationOptions = new()
@@ -95,9 +122,25 @@ internal sealed class IceQuicConnection : IAsyncDisposable
             authenticated = true;
             return channel;
         }
-        catch (Exception) when (!token.IsCancellationRequested && GetPathFailure() is { } failure) { throw failure; }
+        catch (Exception e) when (!token.IsCancellationRequested && NoQuicPath(e))
+        { throw await AbandonPath(e); }
         catch { stream?.Abort(QuicAbortDirection.Both, 1); throw; }
         finally { CryptographicOperations.ZeroMemory(capability); }
+    }
+
+    // These catches cover setup through application authentication. In particular,
+    // ConnectAsync can complete before the host has received the client's Finished.
+    private bool NoQuicPath(Exception error) =>
+        error is OperationCanceledException or SocketException or PlatformNotSupportedException ||
+        error is QuicException { QuicError: QuicError.ConnectionTimeout or QuicError.ConnectionIdle or QuicError.ConnectionRefused } ||
+        error is QuicException { QuicError: QuicError.StreamAborted or QuicError.ConnectionAborted, ApplicationErrorCode: PathUnavailable } ||
+        (error is QuicException { QuicError: QuicError.OperationAborted } && GetPathFailure() != null);
+
+    private async Task<DirectPathUnavailableException> AbandonPath(Exception error)
+    {
+        stream?.Abort(QuicAbortDirection.Both, PathUnavailable);
+        await CloseConnection(PathUnavailable).ConfigureAwait(false);
+        return new DirectPathUnavailableException("UDP で QUIC に接続できませんでした。", GetPathFailure() ?? error);
     }
 
     private CancellationTokenSource HandshakeDeadline(CancellationToken token)
@@ -151,8 +194,8 @@ internal sealed class IceQuicConnection : IAsyncDisposable
                 // Publish the cause before waking the handshake or a blocked record read.
                 Volatile.Write(ref pathFailure, new IOException("UDP 経路が閉じたため、相手との通信を終了しました。", cause));
                 stopping.Cancel();
-                Volatile.Read(ref stream)?.Abort(QuicAbortDirection.Both, 1);
-                await CloseConnection(1).ConfigureAwait(false);
+                Volatile.Read(ref stream)?.Abort(QuicAbortDirection.Both, PathUnavailable);
+                await CloseConnection(PathUnavailable).ConfigureAwait(false);
             }
             finally
             {
@@ -217,5 +260,5 @@ internal sealed class IceQuicConnection : IAsyncDisposable
         }
     }
 
-    internal static IOException Unavailable() => new("部屋番号での接続には QUIC 対応の Windows 11 以降が必要です。");
+    private static DirectPathUnavailableException Unavailable() => new("この PC では QUIC の直接接続を使用できません。");
 }

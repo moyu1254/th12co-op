@@ -110,17 +110,17 @@ internal sealed class UdpIcePeer : IAsyncDisposable
             while (agent.SelectedPair is not { Nominated: true })
             {
                 if (agent.State is IceAgentState.Failed or IceAgentState.Closed)
-                    throw new IOException("UDP の経路を確立できませんでした。");
+                    throw new DirectPathUnavailableException("UDP の経路を確立できませんでした。");
                 await Task.Delay(25, deadline.Token);
             }
             var selected = agent.SelectedPair;
             if (selected is not { Nominated: true } || selected.Remote.Port < 1024 || !allowed.Contains(selected.Remote.Address))
-                throw new IOException("相手の UDP 経路を確認できません。");
+                throw new DirectPathUnavailableException("相手の UDP 経路を確認できません。");
             return path = new IcePath(agent, selected.RemoteEndPoint);
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         {
-            throw new IOException("UDP の接続性チェックがタイムアウトしました。");
+            throw new DirectPathUnavailableException("UDP の接続性チェックがタイムアウトしました。");
         }
     }
 

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Net.Sockets;
+using System.Net.WebSockets;
 using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -87,7 +88,11 @@ internal sealed class RendezvousClient : IDisposable
         var claim = await Read<Claim>(response, token);
         if (!IsToken(claim.GuestToken)) throw InvalidResponse();
         try { CryptographicOperations.ZeroMemory(RoomIdentity.Parse(claim.Invite).Capability); }
-        catch (ArgumentException) { throw InvalidResponse(); }
+        catch (ArgumentException)
+        {
+            await CancelSetup(number, claim.GuestToken, host: false);
+            throw InvalidResponse();
+        }
         return claim;
     }
 
@@ -107,7 +112,7 @@ internal sealed class RendezvousClient : IDisposable
             if (response.StatusCode == HttpStatusCode.OK)
             {
                 var ice = await Read<IceDescription>(response, lifetime.Token);
-                if (!ice.IsValid(AllowLoopback)) throw InvalidResponse();
+                if (!ice.IsValidSignal(AllowLoopback)) throw InvalidResponse();
                 return ice;
             }
             // Empty poll, or all wait slots occupied. Keep the original room and credentials.
@@ -115,15 +120,39 @@ internal sealed class RendezvousClient : IDisposable
         }
     }
 
-    internal async Task Answer(Registration room, IceDescription answer, CancellationToken token)
+    internal async Task<IceDescription> Answer(Registration room, IceDescription answer, CancellationToken token)
     {
         var ice = await VerifyLocal(answer, token);
         using var response = await Post("answer", new { room.Number, room.OwnerToken, ice }, HttpStatusCode.NoContent, token);
+        return ice.Description;
+    }
+
+    internal async Task<bool> AgreeDirect(string number, string credential, bool host, bool direct, CancellationToken token)
+    {
+        var proposal = new { number, token = credential, host, direct };
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+        deadline.CancelAfter(TimeSpan.FromSeconds(35));
+        try
+        {
+            while (true)
+            {
+                using var response = await Post("route", proposal, HttpStatusCode.OK, deadline.Token);
+                switch (await Read<string>(response, deadline.Token))
+                {
+                    case "direct" when direct: return true;
+                    case "relay": return false;
+                    case "pending" when direct: await Task.Delay(TimeSpan.FromSeconds(1), deadline.Token); break;
+                    default: throw InvalidResponse();
+                }
+            }
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        { throw new TimeoutException("接続経路が35秒以内に確定しませんでした。"); }
     }
 
     private async Task<VerifiedIce> VerifyLocal(IceDescription ice, CancellationToken token)
     {
-        if (!ice.IsValid(AllowLoopback)) throw new IOException("有効な UDP 接続候補を取得できませんでした。");
+        if (!ice.IsValidSignal(AllowLoopback)) throw new IOException("有効な UDP 接続候補を取得できませんでした。");
         async Task<AddressProof?> Proof(AddressFamily af)
         {
             try
@@ -140,22 +169,74 @@ internal sealed class RendezvousClient : IDisposable
         var families = ice.Candidates.Select(c => IPAddress.Parse(c.Address).AddressFamily).Distinct();
         var observed = (await Task.WhenAll(families.Select(Proof))).OfType<AddressProof>().ToArray();
         var allowed = ice.Candidates.Where(c => observed.Any(p => p.Address == c.Address)).ToArray();
-        if (allowed.Length == 0)
-            throw new IOException("UDP 接続候補の IP を合流サーバーで確認できませんでした。STUN と合流サーバーへの経路を確認してください。");
+        token.ThrowIfCancellationRequested();
+        if (allowed.Length == 0) return new(IceDescription.NoDirect, []);
         return new(ice with { Candidates = allowed }, observed.Select(p => p.Token).ToArray());
     }
 
-    internal async Task Close(Registration room)
+    internal async Task CancelSetup(string number, string credential, bool host, Action<string>? status = null)
     {
-        using var response = await Post("close", room, HttpStatusCode.NoContent, CancellationToken.None);
+        // The caller's token may already be cancelled. Give the peer a bounded
+        // notification attempt without replacing the original setup failure.
+        object request = host ? new { number, ownerToken = credential } : new { number, guestToken = credential };
+        try { using var response = await Post("close", request, HttpStatusCode.NoContent, CancellationToken.None); }
+        catch (IOException) { status?.Invoke("部屋を取り消せませんでした。部屋は期限が来ると自動で閉じます。"); }
+    }
+
+    internal Task<SecureChannel> AcceptRelay(Registration room, RoomIdentity identity, CancellationToken token) =>
+        OpenRelay(room.Number, room.OwnerToken, true, (stream, ct) => SecureChannel.AcceptTls(stream, identity, true, ct), token);
+
+    internal async Task<SecureChannel> ConnectRelay(string number, Claim claim, CancellationToken token)
+    {
+        var (pin, capability) = RoomIdentity.Parse(claim.Invite);
+        try
+        {
+            return await OpenRelay(number, claim.GuestToken, false,
+                (stream, ct) => SecureChannel.ConnectTls(stream, pin, capability, true, ct), token);
+        }
+        finally { CryptographicOperations.ZeroMemory(capability); }
+    }
+
+    private async Task<SecureChannel> OpenRelay(string number, string credential, bool host,
+        Func<Stream, CancellationToken, Task<SecureChannel>> authenticate, CancellationToken token)
+    {
+        if (!IsNumber(number) || !IsToken(credential)) throw InvalidResponse();
+        var url = new UriBuilder(Origin) { Scheme = "wss", Path = host ? "/v3/relay/host" : "/v3/relay/guest" }.Uri;
+        var socket = new ClientWebSocket();
+        RelayStream? transport = null;
+        try
+        {
+            socket.Options.SetRequestHeader("Authorization", "Bearer " + credential);
+            socket.Options.AddSubProtocol(RelayMessages.HeartbeatProtocol);
+            socket.Options.SetRequestHeader("X-TH12-Room", number);
+            // The same HTTPS handler verifies the outer certificate and disallows redirects.
+            // The relay sends the upgrade response after admitting both room members.
+            using var pairing = CancellationTokenSource.CreateLinkedTokenSource(token);
+            pairing.CancelAfter(TimeSpan.FromSeconds(40));
+            await socket.ConnectAsync(url, http, pairing.Token);
+            using var handshake = CancellationTokenSource.CreateLinkedTokenSource(token);
+            handshake.CancelAfter(TimeSpan.FromSeconds(10));
+            transport = new RelayStream(socket);
+            return await authenticate(transport, handshake.Token);
+        }
+        catch (Exception error)
+        {
+            if (transport == null) socket.Dispose();
+            else transport.Dispose();
+            if (error is OperationCanceledException && !token.IsCancellationRequested)
+                throw new TimeoutException("中継への接続または相手の認証が期限内に完了しませんでした。", error);
+            if (error is WebSocketException)
+                throw new IOException("合流サーバーの中継に接続できませんでした。", error);
+            throw;
+        }
     }
 
     private async Task<HttpResponseMessage> Post<T>(string action, T value, HttpStatusCode expected, CancellationToken token,
         HttpClient? client = null)
     {
         bool poll = action is "offer" or "receive";
-        int attempts = poll ? 4 : action == "answer" ? 2 : 1;
-        int seconds = action switch { "offer" => 25, "receive" or "answer" => 4, _ => 8 };
+        int attempts = poll ? 4 : action is "answer" or "route" or "close" ? 2 : 1;
+        int seconds = action switch { "offer" => 25, "receive" or "answer" or "route" => 4, "close" => 2, _ => 8 };
         HttpResponseMessage response;
         for (int attempt = 1; ; attempt++)
         {
@@ -163,7 +244,7 @@ internal sealed class RendezvousClient : IDisposable
             deadline.CancelAfter(TimeSpan.FromSeconds(seconds));
             try
             {
-                response = await (client ?? http).PostAsJsonAsync($"v2/rooms/{action}", value, Json, deadline.Token);
+                response = await (client ?? http).PostAsJsonAsync($"v3/rooms/{action}", value, Json, deadline.Token);
                 break;
             }
             catch (Exception e) when (!token.IsCancellationRequested && e is (OperationCanceledException or HttpRequestException))
@@ -181,6 +262,7 @@ internal sealed class RendezvousClient : IDisposable
         response.Dispose();
         throw new IOException(status switch
         {
+            HttpStatusCode.NotFound when action == "route" => "接続準備が取り消されたか、部屋の期限が切れました。",
             HttpStatusCode.NotFound => "部屋が見つかりません。使用済みまたは期限切れの場合は新しい番号を作成してください。",
             HttpStatusCode.TooManyRequests => "合流サーバーへの試行回数が上限に達しました。しばらく待ってください。",
             _ => "合流サーバーがリクエストを受け付けませんでした。"
