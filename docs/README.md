@@ -21,6 +21,7 @@
 | [個別機体](independent-characters.md) | 機体別の生成・更新・解放 |
 | [Native IPC](native-ipc.md) | 共有メモリとフレーム確定 |
 | [通信設計](network-security-design.md) | TLS、招待、同期、信頼境界 |
+| [部屋番号と合流サーバー](rendezvous.md) | ランチャー設定、運用、保持期間 |
 | [脅威モデル](TH12CO-OP-threat-model.md) | 評価時点の前提と残る制約 |
 | [バージョン検証](version-layout-audit.md) | 対応EXEの指紋とレイアウト |
 | [実ゲームテスト](quiet-testing.md) | 隔離コピー、無音、所有プロセス管理 |

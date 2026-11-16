@@ -32,6 +32,10 @@ jobs:
         run: ./build.ps1 -NativeOnly -SmokeTest
       - name: Run launcher self-tests without game assets
         run: ./scripts/Test-Repository.ps1 -RunSelfTest
+      - name: Test HTTPS rendezvous directory
+        run: dotnet run --project src/rendezvous -c Release -- --self-test
+      - name: Connect numbered peers through the local HTTPS fixture
+        run: dotnet run --project src/phase1-tests -c Release
       - name: Verify owned-process cleanup failure handling with fake APIs
         run: python scripts/test_native_cleanup.py --out build/native-cleanup-results.json
       - name: Verify smoke tools reject non-fixture folders before writing

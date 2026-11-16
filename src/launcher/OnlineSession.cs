@@ -9,40 +9,152 @@ namespace TH12Coop;
 
 internal static class OnlineSession
 {
-    public static async Task Host(string gameDirectory, int port, RoomIdentity identity, int delay, Action<string> status, CancellationToken token,
+    public static Task Host(string gameDirectory, int port, RoomIdentity identity, int delay, Action<string> status, CancellationToken token,
         string? testNativePath = null, bool testInstance = false, Func<uint, uint>? testInput = null, Action<LockstepPeer>? observe = null, int? localCharacter = null)
     {
-        if (delay is < 1 or > 12) throw new ArgumentOutOfRangeException(nameof(delay));
-        ValidateCharacter(localCharacter);
-        status("ゲームとMODのバージョンを確認しています");
-        var profile = await OnlineProfile.Read(gameDirectory, token, testNativePath);
-        var listener = new TcpListener(IPAddress.IPv6Any, port);
-        listener.Server.DualMode = true;
-        listener.Start(8);
-        try
+        async Task<SecureChannel> Connect()
         {
+            using var listener = Listen(port);
             status($"接続待ち · TCP {port}");
-            using var channel = await AcceptGuest(listener, identity, token);
-            listener.Stop();
-            var manifest = await NegotiateHost(channel, profile.Assets, delay, localCharacter, token);
-            var peer = new LockstepPeer(channel, manifest, 1);
-            observe?.Invoke(peer);
-            await peer.Run(profile, testInstance, testInput, status, token);
+            return await AcceptGuest(listener, identity, token);
         }
-        finally { listener.Stop(); }
+        return Play(gameDirectory, Connect, null, 1, delay, status, token, testNativePath, testInstance, testInput, observe, localCharacter);
     }
 
-    public static async Task Join(string gameDirectory, string host, int port, string invite, Action<string> status, CancellationToken token,
+    public static Task Join(string gameDirectory, string host, int port, string invite, Action<string> status, CancellationToken token,
         string? testNativePath = null, bool testInstance = false, Func<uint, uint>? testInput = null, Action<LockstepPeer>? observe = null, int? localCharacter = null)
+        => Play(gameDirectory, () => SecureChannel.Connect(host, port, invite, token), null, 2, 0, status, token,
+            testNativePath, testInstance, testInput, observe, localCharacter);
+
+    public static async Task HostNumber(string gameDirectory, RoomIdentity identity, int delay, Action<string> roomIssued,
+        Func<string, CancellationToken, Task<bool>> confirm, Action<string> status, CancellationToken token,
+        RendezvousClient? service = null, string? testNativePath = null, bool testInstance = false, Func<uint, uint>? testInput = null,
+        Action<LockstepPeer>? observe = null, Func<CancellationToken, Task<IAsyncDisposable?>>? openMapping = null, int? localCharacter = null)
     {
+        using var configured = service == null ? RendezvousClient.Configured() : null;
+        async Task<SecureChannel> Connect()
+        {
+            using var listener = Listen(RendezvousClient.GamePort, testInstance ? IPAddress.Loopback : null);
+            return await AcceptNumber(listener, service ?? configured!, identity, roomIssued, status, token,
+                openMapping ?? (async ct => await UpnpPortMapping.TryOpenAsync(ct)));
+        }
+        await Play(gameDirectory, Connect, confirm, 1, delay, status, token, testNativePath, testInstance, testInput, observe, localCharacter);
+    }
+
+    public static async Task JoinNumber(string gameDirectory, string number, Func<string, CancellationToken, Task<bool>> confirm,
+        Action<string> status, CancellationToken token, RendezvousClient? service = null, string? testNativePath = null,
+        bool testInstance = false, Func<uint, uint>? testInput = null, Action<LockstepPeer>? observe = null, int? localCharacter = null)
+    {
+        using var configured = service == null ? RendezvousClient.Configured() : null;
+        async Task<SecureChannel> Connect()
+        {
+            var candidate = await (service ?? configured!).Join(number, token);
+            status("ホストに接続しています");
+            try { return await SecureChannel.Connect(candidate.Address, candidate.Port, candidate.Invite, token, numbered: true); }
+            catch (Exception e) when (e is SocketException or TimeoutException)
+            { throw new IOException("ホストに直接接続できません。TCP 3012 のポート転送とファイアウォールを確認し、新しい部屋番号で再試行してください。", e); }
+        }
+        await Play(gameDirectory, Connect, confirm, 2, 0, status, token, testNativePath, testInstance, testInput, observe, localCharacter);
+    }
+
+    private static TcpListener Listen(int port, IPAddress? address = null)
+    {
+        var listener = new TcpListener(address ?? IPAddress.IPv6Any, port);
+        try
+        {
+            if (address == null) listener.Server.DualMode = true;
+            listener.Start(8);
+            return listener;
+        }
+        catch { listener.Dispose(); throw; }
+    }
+
+    private static async Task Play(string gameDirectory, Func<Task<SecureChannel>> connect,
+        Func<string, CancellationToken, Task<bool>>? confirm, byte role, int delay, Action<string> status, CancellationToken token,
+        string? testNativePath, bool testInstance, Func<uint, uint>? testInput, Action<LockstepPeer>? observe, int? localCharacter)
+    {
+        if (role == 1 && delay is < 1 or > 12) throw new ArgumentOutOfRangeException(nameof(delay));
         ValidateCharacter(localCharacter);
         status("ゲームとMODのバージョンを確認しています");
         var profile = await OnlineProfile.Read(gameDirectory, token, testNativePath);
-        using var channel = await SecureChannel.Connect(host, port, invite, token);
-        var manifest = await NegotiateGuest(channel, profile.Assets, localCharacter, token);
-        var peer = new LockstepPeer(channel, manifest, 2);
+        using var channel = await connect();
+        if (confirm != null) await ConfirmPeer(channel, confirm, token);
+        var manifest = role == 1
+            ? await NegotiateHost(channel, profile.Assets, delay, localCharacter, token)
+            : await NegotiateGuest(channel, profile.Assets, localCharacter, token);
+        var peer = new LockstepPeer(channel, manifest, role);
         observe?.Invoke(peer);
         await peer.Run(profile, testInstance, testInput, status, token);
+    }
+
+    internal static async Task<SecureChannel> AcceptNumber(TcpListener listener, RendezvousClient service, RoomIdentity identity,
+        Action<string> roomIssued, Action<string> status, CancellationToken token, Func<CancellationToken, Task<IAsyncDisposable?>> openMapping)
+    {
+        SecureChannel? accepted = null;
+        RendezvousClient.Registration? room = null;
+        try
+        {
+            status("部屋を作成しています");
+            await using var mapping = await openMapping(token);
+            using var wait = CancellationTokenSource.CreateLinkedTokenSource(token);
+            wait.CancelAfter(TimeSpan.FromMinutes(10));
+            try
+            {
+                room = await service.Create(identity.Invite, wait.Token);
+                roomIssued(room.Number);
+                status(mapping != null ? "ゲストの接続を待っています" :
+                    "接続待ち · 外部から接続できない場合は TCP 3012 のポート転送を設定してください");
+                accepted = await AcceptGuest(listener, identity, wait.Token, numbered: true);
+                return accepted;
+            }
+            catch (OperationCanceledException) when (wait.IsCancellationRequested && !token.IsCancellationRequested)
+            { throw new TimeoutException("部屋番号が期限切れになりました。新しい部屋を作成してください。"); }
+            finally { listener.Stop(); }
+        }
+        catch
+        {
+            // Join already consumed the number before returning the guest's invitation.
+            if (accepted != null) accepted.Dispose();
+            else if (room != null)
+            {
+                try { await service.Close(room); }
+                catch (IOException) { status("合流サーバーに終了を通知できませんでした。部屋番号は10分で失効します。"); }
+            }
+            throw;
+        }
+    }
+
+    internal static async Task ConfirmPeer(SecureChannel channel, Func<string, CancellationToken, Task<bool>> confirm, CancellationToken token)
+    {
+        var code = channel.VerificationCode ?? throw new IOException("照合が必要な接続です。");
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+        deadline.CancelAfter(TimeSpan.FromSeconds(40));
+        async Task WaitForPeer()
+        {
+            var reply = await channel.Receive(deadline.Token);
+            if (reply.Length != 2 || reply[0] != 5 || reply[1] != 1)
+                throw new IOException("相手が照合を承認しませんでした。");
+        }
+        var remote = WaitForPeer();
+        Task<bool>? local = null;
+        try
+        {
+            local = confirm(code, deadline.Token);
+            var guarded = local.WaitAsync(deadline.Token);
+            if (await Task.WhenAny(remote, guarded) == remote) await remote;
+            bool matches = await guarded;
+            await channel.Send([5, matches ? (byte)1 : (byte)0], deadline.Token);
+            if (!matches) throw new IOException("照合を中止しました。");
+            await remote;
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        { throw new TimeoutException("相手との照合が40秒以内に完了しませんでした。"); }
+        finally
+        {
+            deadline.Cancel();
+            await remote.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            if (local != null) await ((Task)local).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
     }
 
     internal static async Task<SessionManifest> NegotiateHost(SecureChannel channel, AssetProfile assets, int delay, int? localCharacter, CancellationToken token)
@@ -100,7 +212,7 @@ internal static class OnlineSession
         return selection[1] == 255 ? null : selection[1];
     }
 
-    internal static async Task<SecureChannel> AcceptGuest(TcpListener listener, RoomIdentity identity, CancellationToken token)
+    internal static async Task<SecureChannel> AcceptGuest(TcpListener listener, RoomIdentity identity, CancellationToken token, bool numbered = false)
     {
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(token);
         using var slots = new SemaphoreSlim(8);
@@ -116,7 +228,7 @@ internal static class OnlineSession
                 {
                     try
                     {
-                        var peer = await SecureChannel.Accept(raw, identity, lifetime.Token);
+                        var peer = await SecureChannel.Accept(raw, identity, lifetime.Token, numbered);
                         if (!authenticated.Writer.TryWrite(peer)) peer.Dispose();
                     }
                     catch (Exception e) when (e is IOException or AuthenticationException or OperationCanceledException or SocketException or TimeoutException)

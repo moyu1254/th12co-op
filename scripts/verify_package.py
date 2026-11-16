@@ -27,7 +27,7 @@ REQUIRED_FILES = {"dist/TH12Coop.exe", "dist/TH12Coop.dll", "dist/th12coop-nativ
 EXCLUDED = {"bin", "obj", "__pycache__"}
 MAX_ENTRIES, MAX_FILE, MAX_TOTAL, MAX_ARCHIVE = 20000, 64 << 20, 1 << 30, 512 << 20
 CONFIG_HASH = "9d3016fdf6f7c1395a399de7de0081b0fa766787b4e0c472a2564ca713833a8f"
-SECRET = re.compile(rb"-----BEGIN (?:RSA |EC |OPENSSH |ENCRYPTED )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{50,}|T12L[34]\.[A-Za-z0-9_-]{86}")
+SECRET = re.compile(rb"-----BEGIN (?:RSA |EC |OPENSSH |ENCRYPTED )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{50,}|T12L[0-9]+\.[A-Za-z0-9_-]{86}")
 FORBIDDEN_DIRS = EXCLUDED | {".git", ".vs", ".cache", "node_modules", "sessions", "replay", "replays", "save", "saves", "research", "artifacts"}
 FORBIDDEN_EXTS = {".dat", ".rpy", ".rep", ".sav", ".save", ".bgm", ".anm", ".ecl", ".sht", ".msg", ".std", ".pdb", ".pyc", ".log", ".dmp", ".pfx", ".p12", ".key", ".pem", ".wav", ".ogg", ".mp3", ".flac", ".m4a", ".mp4", ".webm", ".mov", ".avi", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".ico", ".dds"}
 

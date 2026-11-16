@@ -11,4 +11,7 @@
     <PlatformTarget>x64</PlatformTarget>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="TH12Coop.Phase1Tests" />
+  </ItemGroup>
 </Project>
