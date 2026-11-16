@@ -119,12 +119,17 @@ internal static class RelayServerTests
         await fx.Denied(first, false, HttpStatusCode.NotFound, first.Room.OwnerToken);
         using var host = new ClientWebSocket();
         using var guest = new ClientWebSocket();
+        host.Options.AddSubProtocol(RelayMessages.HeartbeatProtocol);
         await Task.WhenAll(fx.Connect(host, first, true), fx.Connect(guest, first, false));
+        if (host.SubProtocol != RelayMessages.HeartbeatProtocol || !string.IsNullOrEmpty(guest.SubProtocol))
+            throw new InvalidOperationException("Each relay endpoint must negotiate heartbeat support independently");
         await fx.Denied(first, true, HttpStatusCode.NotFound);
         await fx.Denied(second, true, HttpStatusCode.ServiceUnavailable);
         await fx.CancelGuestSetup(first); // Releasing signaling with a guest token must preserve this duplex relay.
 
         var payload = RandomNumberGenerator.GetBytes(16384);
+        // The legacy guest receives only TLS data, even when its peer sends a heartbeat.
+        await host.SendAsync(ReadOnlyMemory<byte>.Empty, WebSocketMessageType.Binary, true, ct);
         await host.SendAsync(payload.AsMemory(0, 123), WebSocketMessageType.Binary, false, ct);
         await host.SendAsync(payload.AsMemory(123), WebSocketMessageType.Binary, true, ct);
         await Receive(guest, payload, ct);
@@ -213,6 +218,8 @@ internal static class RelayServerTests
         using var quietPeer = new ClientWebSocket();
         using var oneWay = new ClientWebSocket();
         using var silentPeer = new ClientWebSocket();
+        oneWay.Options.AddSubProtocol(RelayMessages.HeartbeatProtocol);
+        silentPeer.Options.AddSubProtocol(RelayMessages.HeartbeatProtocol);
         async Task Pair(ClientWebSocket host, ClientWebSocket guest)
         {
             var room = await fx.Room();
@@ -241,8 +248,12 @@ internal static class RelayServerTests
             await Exchange(activePeer, active);
             if (!oneWayClosed.IsCompleted)
             {
-                // Traffic toward the silent participant cannot renew its lease to send back.
-                try { await oneWay.SendAsync(payload.AsMemory(), WebSocketMessageType.Binary, true, ct); }
+                // Neither a heartbeat nor data sent toward a silent participant renews its lease.
+                try
+                {
+                    await oneWay.SendAsync(ReadOnlyMemory<byte>.Empty, WebSocketMessageType.Binary, true, ct);
+                    await oneWay.SendAsync(payload.AsMemory(), WebSocketMessageType.Binary, true, ct);
+                }
                 catch (Exception e) when (e is WebSocketException or InvalidOperationException)
                 { await oneWayClosed.WaitAsync(TimeSpan.FromSeconds(1), ct); }
             }

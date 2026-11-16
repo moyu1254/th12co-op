@@ -207,6 +207,7 @@ internal sealed class RendezvousClient : IDisposable
         try
         {
             socket.Options.SetRequestHeader("Authorization", "Bearer " + credential);
+            socket.Options.AddSubProtocol(RelayMessages.HeartbeatProtocol);
             socket.Options.SetRequestHeader("X-TH12-Room", number);
             // The same HTTPS handler verifies the outer certificate and disallows redirects.
             // The relay sends the upgrade response after admitting both room members.

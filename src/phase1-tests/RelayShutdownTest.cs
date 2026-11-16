@@ -86,6 +86,58 @@ internal static class RelayShutdownTest
         Console.WriteLine("PASS queued cancellation and in-flight cancellation preserve the admitted ciphertext through close");
     }
 
+    internal static async Task ProcessExit(CancellationToken token)
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        using var raw = new TcpClient(AddressFamily.InterNetwork);
+        using var secure = new TcpClient(AddressFamily.InterNetwork);
+        await raw.ConnectAsync(endpoint, token);
+        using var rawPeer = await listener.AcceptTcpClientAsync(token);
+        await secure.ConnectAsync(endpoint, token);
+        using var securePeer = await listener.AcceptTcpClientAsync(token);
+        using var rawWriter = new GatedWrite(raw.Client);
+        using var secureWriter = new GatedWrite(secure.Client);
+        using var rawSocket = WebSocket.CreateFromStream(rawWriter, false, null, Timeout.InfiniteTimeSpan);
+        using var secureSocket = WebSocket.CreateFromStream(secureWriter, false, null, Timeout.InfiniteTimeSpan);
+        using var rawReader = WebSocket.CreateFromStream(rawPeer.GetStream(), true, null, Timeout.InfiniteTimeSpan);
+        using var secureReader = WebSocket.CreateFromStream(securePeer.GetStream(), true, null, Timeout.InfiniteTimeSpan);
+        using var rawStream = new RelayStream(rawSocket);
+        using var secureStream = new RelayStream(secureSocket);
+        using var tls = new GatedShutdown(secureStream);
+        try
+        {
+            rawStream.Dispose(); // A peer TLS handshake can fail before a channel exists.
+            secureStream.FinishTls(tls);
+            await Task.WhenAll(tls.Started.Task, rawWriter.Started.Task).WaitAsync(token);
+            if (RelayStream.WaitForCloseOutput(TimeSpan.FromMilliseconds(50)))
+                throw new IOException("Process exit ignored pending TLS and WSS output");
+            var exiting = Task.Run(() => RelayStream.WaitForCloseOutput(TimeSpan.FromSeconds(3)), token);
+            rawWriter.Writable.SetResult();
+            if ((await rawReader.ReceiveAsync(new byte[1].AsMemory(), token)).MessageType != WebSocketMessageType.Close)
+                throw new IOException("Expected the unauthenticated connection's Close");
+            if (RelayStream.WaitForCloseOutput(TimeSpan.Zero))
+                throw new IOException("Process exit ignored the other connection's TLS shutdown");
+            tls.Written.SetResult();
+            await secureWriter.Started.Task.WaitAsync(token);
+            if (RelayStream.WaitForCloseOutput(TimeSpan.Zero))
+                throw new IOException("Lost pending output during the handoff from TLS to WSS");
+            secureWriter.Writable.SetResult();
+            if (!await exiting || (await secureReader.ReceiveAsync(new byte[1].AsMemory(), token)).MessageType != WebSocketMessageType.Close)
+                throw new IOException("Process exit did not finish sending Close before a peer reply");
+        }
+        finally
+        {
+            rawWriter.Writable.TrySetResult();
+            tls.Written.TrySetResult();
+            secureWriter.Writable.TrySetResult();
+        }
+        await Task.WhenAll(rawReader.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, null, token),
+            secureReader.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, null, token));
+        Console.WriteLine("PASS process exit waits for all local TLS/WSS close output under one deadline without waiting for peer replies");
+    }
+
     private static async Task DelayedPeer(Reader reader, CancellationToken token)
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);

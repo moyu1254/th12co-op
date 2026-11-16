@@ -68,7 +68,12 @@ internal sealed class RelayPair(bool firstHost, RelayLimits limits, TimeProvider
             token.ThrowIfCancellationRequested();
             // AcceptWebSocketAsync itself has no cancellation parameter.
             using (token.Register(context.Abort))
-                socket = await context.WebSockets.AcceptWebSocketAsync(new WebSocketAcceptContext { DangerousEnableCompression = false });
+                socket = await context.WebSockets.AcceptWebSocketAsync(new WebSocketAcceptContext
+                {
+                    DangerousEnableCompression = false,
+                    SubProtocol = context.WebSockets.WebSocketRequestedProtocols.Contains(RelayMessages.HeartbeatProtocol, StringComparer.Ordinal)
+                        ? RelayMessages.HeartbeatProtocol : null
+                });
             lock (gate)
             {
                 sockets[side] = socket;
@@ -122,12 +127,21 @@ internal sealed class RelayPair(bool firstHost, RelayLimits limits, TimeProvider
     {
         var messages = new RelayMessages();
         var token = live.Token;
+        // The launcher sends at most 720 heartbeats in a full two-hour session.
+        // A per-direction cap bounds control traffic even when messages arrive in a burst.
+        int heartbeats = 0;
+        void Heartbeat()
+        {
+            if (++heartbeats > 1024) throw new InvalidDataException();
+            live.CancelAfter(limits.Idle);
+        }
+        Action? heartbeat = source.SubProtocol == RelayMessages.HeartbeatProtocol ? Heartbeat : null;
         while (true)
         {
-            // Only a complete message forwarded by this direction renews its idle
-            // window. The other direction and the absolute pair TTL have independent timers.
+            // Completed ciphertext or a negotiated transport heartbeat renews only
+            // this direction. Partial messages and stalled sends remain bounded.
             live.CancelAfter(limits.Idle);
-            var payload = await messages.Read(source, token);
+            var payload = await messages.Read(source, token, heartbeat);
             if (payload.IsEmpty) return;
             if (Interlocked.Add(ref transferred, payload.Length) > limits.Bytes) throw new InvalidDataException();
             await destination.SendAsync(payload, WebSocketMessageType.Binary, true, token);

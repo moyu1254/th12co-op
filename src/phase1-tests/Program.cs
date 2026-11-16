@@ -147,6 +147,7 @@ internal static class Program
                 await CancelWaitingHost(service);
                 Check(hostRequests.Closes == 1 && hostRequests.Upgrades == 0, "Cancelling an unclaimed room must close without relay");
                 using var tests = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+                await RelayShutdownTest.ProcessExit(tests.Token);
                 await Task.WhenAll(DelayedHostOfferProcessing(service, tests.Token),
                     QuicIdentityTests.Run(tests.Token), UdpPathTests.Run(tests.Token), RelayPathTests.Run(cert, tests.Token), RelayShutdownTest.Run(tests.Token),
                     RelayPathTests.AsymmetricRoute(service, url, cert, tests.Token), RelayPathTests.GuestAbortsSetup(cert, tests.Token));

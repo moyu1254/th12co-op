@@ -1,18 +1,84 @@
+using System.Diagnostics;
 using System.Net.Security;
 using System.Net.WebSockets;
 
 namespace TH12Coop;
 
-// SslStream supplies ciphertext here. Each direction has a single caller.
-internal sealed class RelayStream(WebSocket socket) : Stream
+// SslStream supplies ciphertext here. The writer also serializes transport heartbeats.
+internal sealed class RelayStream : Stream
 {
+    private static readonly object closeGate = new();
+    private static int pendingCloseOutputs;
+
+    private static void BeginCloseOutput()
+    {
+        lock (closeGate) pendingCloseOutputs++;
+    }
+
+    private static void EndCloseOutput()
+    {
+        lock (closeGate)
+            if (--pendingCloseOutputs == 0) Monitor.PulseAll(closeGate);
+    }
+
+    internal static bool WaitForCloseOutput(TimeSpan timeout)
+    {
+        var start = Stopwatch.GetTimestamp();
+        lock (closeGate)
+        {
+            while (pendingCloseOutputs != 0)
+            {
+                var remaining = timeout - Stopwatch.GetElapsedTime(start);
+                if (remaining <= TimeSpan.Zero) return false;
+                Monitor.Wait(closeGate, remaining);
+            }
+            return true;
+        }
+    }
     private readonly RelayMessages messages = new();
+    private readonly WebSocket socket;
     private readonly SemaphoreSlim reader = new(1, 1);
     private readonly SemaphoreSlim writer = new(1, 1);
+    private PeriodicTimer? heartbeat;
     private Task<ReadOnlyMemory<byte>>? pending;
     private ReadOnlyMemory<byte> remaining;
     private bool eof;
     private int disposed;
+
+    internal RelayStream(WebSocket socket)
+    {
+        this.socket = socket;
+        if (socket.SubProtocol == RelayMessages.HeartbeatProtocol)
+        {
+            heartbeat = new PeriodicTimer(TimeSpan.FromSeconds(10));
+            _ = SendHeartbeats(heartbeat);
+        }
+    }
+
+    private async Task SendHeartbeats(PeriodicTimer timer)
+    {
+        try
+        {
+            while (await timer.WaitForNextTickAsync().ConfigureAwait(false))
+            {
+                // An admitted ciphertext write already provides transport activity.
+                if (!writer.Wait(0)) continue;
+                try
+                {
+                    if (Volatile.Read(ref heartbeat) == null || socket.State != WebSocketState.Open) return;
+                    using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                    await socket.SendAsync(ReadOnlyMemory<byte>.Empty, WebSocketMessageType.Binary, true, deadline.Token)
+                        .ConfigureAwait(false);
+                }
+                finally { writer.Release(); }
+            }
+        }
+        catch (Exception e) when (e is IOException or WebSocketException or OperationCanceledException or InvalidOperationException)
+        { socket.Abort(); }
+        finally { timer.Dispose(); }
+    }
+
+    private void StopHeartbeats() => Interlocked.Exchange(ref heartbeat, null)?.Dispose();
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default)
     {
@@ -85,21 +151,32 @@ internal sealed class RelayStream(WebSocket socket) : Stream
 
     private async Task ShutdownTls(SslStream tls)
     {
+        BeginCloseOutput();
         try
         {
+            StopHeartbeats();
             await DrainWriter().ConfigureAwait(false);
             using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(1));
             using var interrupt = limit.Token.Register(socket.Abort);
             await tls.ShutdownAsync().ConfigureAwait(false);
         }
         catch (Exception e) when (e is IOException or WebSocketException or InvalidOperationException or OperationCanceledException) { }
-        finally { tls.Dispose(); }
+        finally
+        {
+            // Disposing the TLS stream starts its outer CloseOutput before this
+            // registration ends, so process exit observes both writes as one chain.
+            try { tls.Dispose(); }
+            finally { EndCloseOutput(); }
+        }
     }
 
     protected override void Dispose(bool disposing)
     {
         if (disposing && Interlocked.Exchange(ref disposed, 1) == 0)
+        {
+            StopHeartbeats();
             _ = CloseSocket();
+        }
         base.Dispose(disposing);
     }
 
@@ -107,9 +184,10 @@ internal sealed class RelayStream(WebSocket socket) : Stream
     {
         try
         {
-            await DrainWriter().ConfigureAwait(false);
+            BeginCloseOutput();
             try
             {
+                await DrainWriter().ConfigureAwait(false);
                 if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
                 {
                     using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(1));
@@ -118,6 +196,7 @@ internal sealed class RelayStream(WebSocket socket) : Stream
             }
             catch (Exception e) when (e is WebSocketException or OperationCanceledException or InvalidOperationException or IOException)
             { socket.Abort(); }
+            finally { EndCloseOutput(); }
 
             // Let the existing reader finish before consuming the reverse path.
             // Even when its caller cancelled, observe the retained physical read.

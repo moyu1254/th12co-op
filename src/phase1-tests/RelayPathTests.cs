@@ -15,6 +15,7 @@ namespace TH12Coop.Phase1Tests;
 internal sealed class RouteProbe(HttpMessageHandler inner) : DelegatingHandler(inner)
 {
     internal bool MissingProof { get; init; }
+    internal bool LegacyRelay { get; init; }
     internal int UnreachablePort { get; init; }
     internal Action? OnWaitAnswer { get; init; }
     private int closes, upgrades, rewritten;
@@ -28,7 +29,13 @@ internal sealed class RouteProbe(HttpMessageHandler inner) : DelegatingHandler(i
         var path = request.RequestUri?.AbsolutePath;
         if (path == "/v3/rooms/receive") OnWaitAnswer?.Invoke();
         if (path == "/v3/rooms/close") Interlocked.Increment(ref closes);
-        if (path is "/v3/relay/host" or "/v3/relay/guest") Interlocked.Increment(ref upgrades);
+        if (path is "/v3/relay/host" or "/v3/relay/guest")
+        {
+            Interlocked.Increment(ref upgrades);
+            // Exercise an upgrade that succeeds without negotiating heartbeats.
+            if (LegacyRelay && !request.Headers.Remove("Sec-WebSocket-Protocol"))
+                throw new InvalidOperationException("The launcher did not offer a relay subprotocol");
+        }
         if (MissingProof && path == "/v3/rooms/proof")
         {
             Interlocked.Increment(ref rewritten);
@@ -159,7 +166,8 @@ internal static class RelayPathTests
 
     internal static async Task Run(X509Certificate2 cert, CancellationToken token)
     {
-        await using var app = DirectoryServer.Build(cert, new(), IPAddress.Loopback, 0, TimeProvider.System);
+        var limits = Rendezvous.RelayLimits.Default with { Idle = TimeSpan.FromSeconds(15) };
+        await using var app = DirectoryServer.Build(cert, new(), IPAddress.Loopback, 0, TimeProvider.System, relayLimits: limits);
         await app.StartAsync(token);
         try
         {
@@ -179,7 +187,8 @@ internal static class RelayPathTests
         // Keep the unreachable UDP destination bound so another process cannot answer ICE checks there.
         using var sink = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
         var deadPort = missingHostProof ? 0 : ((IPEndPoint)sink.Client.LocalEndPoint!).Port;
-        var observedHost = new RouteProbe(Program.TestHandler(cert)) { MissingProof = missingHostProof, UnreachablePort = deadPort };
+        var observedHost = new RouteProbe(Program.TestHandler(cert))
+            { MissingProof = missingHostProof, UnreachablePort = deadPort, LegacyRelay = !missingHostProof };
         var observedGuest = new RouteProbe(Program.TestHandler(cert)) { UnreachablePort = deadPort };
         using var hostService = new RendezvousClient(url, observedHost);
         using var guestService = new RendezvousClient(url, observedGuest);
@@ -188,7 +197,7 @@ internal static class RelayPathTests
         await using var guest = new NumberedTransport(guestService);
         var issued = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
-        deadline.CancelAfter(TimeSpan.FromSeconds(35));
+        deadline.CancelAfter(TimeSpan.FromSeconds(missingHostProof ? 55 : 35));
         var ct = deadline.Token;
         var accepting = host.Host(identity, issued.SetResult, _ => { }, ct);
         try
@@ -209,6 +218,9 @@ internal static class RelayPathTests
             await Task.WhenAll(hostGate, guestGate);
             var payload = RandomNumberGenerator.GetBytes(SecureChannel.MaximumPayload);
             await guestPeer.Send(payload, ct);
+            // Neither launcher issues a read or write during this pause. Leave actual
+            // ciphertext unread at the host, longer than this relay's inactivity limit.
+            if (missingHostProof) await Task.Delay(TimeSpan.FromSeconds(18), ct);
             if (!(await hostPeer.Receive(ct)).SequenceEqual(payload)) throw new IOException("Relayed payload mismatch");
             await hostPeer.Send([42], ct);
             if (!(await guestPeer.Receive(ct)).SequenceEqual(new byte[] { 42 })) throw new IOException("Relayed reply mismatch");
@@ -224,7 +236,7 @@ internal static class RelayPathTests
             if (!(await hostPeer.Receive(ct)).SequenceEqual(new byte[] { 43 })) throw new IOException("Lost final relayed record");
             try { await hostPeer.Receive(ct); throw new InvalidOperationException("Relay stayed open after peer closed"); }
             catch (EndOfStreamException) { }
-            Console.WriteLine(missingHostProof ? "PASS one peer without a proved UDP candidate uses WSS and both confirm before data" :
+            Console.WriteLine(missingHostProof ? "PASS confirmed WSS peers with no application I/O survive the relay idle deadline and resume in order" :
                 "PASS two proved but unreachable UDP endpoints fall back to WSS and exchange authenticated records");
         }
         finally
