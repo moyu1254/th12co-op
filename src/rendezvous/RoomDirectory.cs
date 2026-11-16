@@ -14,7 +14,6 @@ internal sealed class RoomDirectory(TimeProvider clock)
 {
     internal static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(10);
     internal const int Port = 3012;
-    private const int MaxReservations = 32;
     private readonly object gate = new();
     private readonly Dictionary<string, Reservation> numbers = new();
     private readonly AdmissionWindow creates = new(4, 8, 12, 48);
@@ -22,7 +21,7 @@ internal sealed class RoomDirectory(TimeProvider clock)
     private readonly AdmissionWindow closes = new(12, 24, 36, 96);
 
     private sealed record Entry(Candidate Candidate, byte[] OwnerToken);
-    private sealed record Reservation(long Created, Entry? Entry);
+    private sealed record Reservation(long AdmittedAt, Entry? Entry);
     internal static IPAddress Normalize(IPAddress source) => source.IsIPv4MappedToIPv6 ? source.MapToIPv4() : source;
 
     private readonly record struct Network(bool IsIPv6, ulong Bits)
@@ -67,7 +66,7 @@ internal sealed class RoomDirectory(TimeProvider clock)
         }
     }
 
-    internal bool Admit(Operation op, IPAddress source)
+    internal bool Admit(Operation op, IPAddress source, out long admittedAt)
     {
         var window = op switch
         {
@@ -76,7 +75,11 @@ internal sealed class RoomDirectory(TimeProvider clock)
             Operation.Close => closes,
             _ => throw new ArgumentOutOfRangeException(nameof(op))
         };
-        lock (gate) return window.TryAdmit(Network.From(source), clock.GetTimestamp(), clock);
+        lock (gate)
+        {
+            admittedAt = clock.GetTimestamp();
+            return window.TryAdmit(Network.From(source), admittedAt, clock);
+        }
     }
 
     internal static bool ValidNumber(string? value) => value is { Length: 6 } && value.All(char.IsAsciiDigit);
@@ -86,18 +89,21 @@ internal sealed class RoomDirectory(TimeProvider clock)
         && value.AsSpan(6).IndexOfAnyExcept("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_") < 0
         && "AQgw".Contains(value[^1]); // 64 bytes: only the high two bits of the final character carry data.
 
-    internal Registration? Create(string invite, IPAddress source)
+    internal Registration? Create(string invite, IPAddress source, long admittedAt)
     {
         lock (gate)
         {
-            RemoveExpired();
-            if (numbers.Count >= MaxReservations) return null;
+            var now = clock.GetTimestamp();
+            RemoveExpired(now);
+            // Each accepted create request can reserve one number until its admission expires.
+            // Reading the request body must not extend the reservation beyond that window.
+            if (clock.GetElapsedTime(admittedAt, now) >= Lifetime) return null;
             string number;
             do { number = RandomNumberGenerator.GetInt32(1_000_000).ToString("D6", CultureInfo.InvariantCulture); }
             while (numbers.ContainsKey(number));
             var token = RandomNumberGenerator.GetBytes(32);
             var entry = new Entry(new(invite, Normalize(source).ToString(), Port), token);
-            numbers.Add(number, new(clock.GetTimestamp(), entry));
+            numbers.Add(number, new(admittedAt, entry));
             return new(number, Convert.ToHexString(token));
         }
     }
@@ -106,7 +112,7 @@ internal sealed class RoomDirectory(TimeProvider clock)
     {
         lock (gate)
         {
-            RemoveExpired();
+            RemoveExpired(clock.GetTimestamp());
             if (!numbers.TryGetValue(number, out var reservation) || reservation.Entry is not { } entry) return null;
             if (ownerToken != null && !CryptographicOperations.FixedTimeEquals(entry.OwnerToken, ownerToken)) return null;
             // Retire the number until its original expiry so a stale invitation cannot claim a new room.
@@ -118,18 +124,19 @@ internal sealed class RoomDirectory(TimeProvider clock)
 
     internal void RemoveExpired()
     {
-        lock (gate)
+        lock (gate) RemoveExpired(clock.GetTimestamp());
+    }
+
+    private void RemoveExpired(long now)
+    {
+        foreach (var (number, reservation) in numbers)
         {
-            var now = clock.GetTimestamp();
-            foreach (var (number, reservation) in numbers)
-            {
-                if (clock.GetElapsedTime(reservation.Created, now) < Lifetime) continue;
-                if (reservation.Entry is { } entry) CryptographicOperations.ZeroMemory(entry.OwnerToken);
-                numbers.Remove(number);
-            }
-            creates.Expire(now, clock);
-            joins.Expire(now, clock);
-            closes.Expire(now, clock);
+            if (clock.GetElapsedTime(reservation.AdmittedAt, now) < Lifetime) continue;
+            if (reservation.Entry is { } entry) CryptographicOperations.ZeroMemory(entry.OwnerToken);
+            numbers.Remove(number);
         }
+        creates.Expire(now, clock);
+        joins.Expire(now, clock);
+        closes.Expire(now, clock);
     }
 }

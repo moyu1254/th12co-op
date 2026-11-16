@@ -101,7 +101,8 @@ internal static class Program
         };
         if (op == null || context.Connection.RemoteIpAddress is not { } source) { response.StatusCode = 404; return; }
         if (!request.HasJsonContentType()) { response.StatusCode = 415; return; }
-        if (!directory.Admit(op.Value, source)) { response.StatusCode = 429; return; }
+        if (!directory.Admit(op.Value, source, out var admittedAt))
+        { response.StatusCode = StatusCodes.Status429TooManyRequests; return; }
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
         deadline.CancelAfter(TimeSpan.FromSeconds(5));
         try
@@ -111,8 +112,8 @@ internal static class Program
                 case Operation.Create:
                     var create = await JsonSerializer.DeserializeAsync<Create>(request.Body, Json, deadline.Token);
                     if (create?.Port != RoomDirectory.Port || !RoomDirectory.ValidInvite(create.Invite)) break;
-                    var registration = directory.Create(create.Invite, source);
-                    if (registration == null) { response.StatusCode = 503; return; }
+                    var registration = directory.Create(create.Invite, source, admittedAt);
+                    if (registration == null) { response.StatusCode = StatusCodes.Status408RequestTimeout; return; }
                     await response.WriteAsJsonAsync(registration, Json, deadline.Token);
                     return;
                 case Operation.Join:
