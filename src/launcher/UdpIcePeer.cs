@@ -110,7 +110,7 @@ internal sealed class UdpIcePeer : IAsyncDisposable
             while (agent.SelectedPair is not { Nominated: true })
             {
                 if (agent.State is IceAgentState.Failed or IceAgentState.Closed)
-                    throw new IOException("UDP の経路を確立できませんでした。");
+                    throw new DirectPathUnavailableException("UDP の経路を確立できませんでした。");
                 await Task.Delay(25, deadline.Token);
             }
             var selected = agent.SelectedPair;
@@ -120,7 +120,7 @@ internal sealed class UdpIcePeer : IAsyncDisposable
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         {
-            throw new IOException("UDP の接続性チェックがタイムアウトしました。");
+            throw new DirectPathUnavailableException("UDP の接続性チェックがタイムアウトしました。");
         }
     }
 

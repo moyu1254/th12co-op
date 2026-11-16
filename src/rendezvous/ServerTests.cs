@@ -25,7 +25,7 @@ internal static class ServerTests
 
     internal static async Task<int> Run()
     {
-        var invite = "T12L6." + Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(64));
+        var invite = "T12L7." + Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(64));
         SourceLimits(invite);
         IPv6PrefixLimits();
         IndependentOperationLimits();
@@ -39,13 +39,15 @@ internal static class ServerTests
         Console.WriteLine("PASS busy and overlapping polls preserve offer/receive budgets; new waits, bad credentials and replayed reads remain metered");
         await HttpsLifecycle(invite);
         Console.WriteLine("PASS HTTPS address proof, single-use join, authenticated ICE exchange, cancellation and request bounds");
+        await RelayServerTests.Run(invite);
         return 0;
     }
 
     private static void IPv6PrefixLimits()
     {
         foreach (var (operation, per56, per48) in new[] { (Operation.Create, 8, 12), (Operation.Join, 12, 24), (Operation.Proof, 48, 72),
-            (Operation.Offer, 320, 480), (Operation.Answer, 24, 36), (Operation.Receive, 640, 1280), (Operation.Close, 24, 36) })
+            (Operation.Offer, 320, 480), (Operation.Answer, 24, 36), (Operation.Receive, 640, 1280), (Operation.Close, 24, 36),
+            (Operation.Relay, 48, 72) })
         {
             var rooms = new RoomDirectory(new ManualTime());
             int admitted = 0;
@@ -66,7 +68,7 @@ internal static class ServerTests
         var rooms = new RoomDirectory(new ManualTime());
         var source = 0;
         foreach (var (op, limit) in new[] { (Operation.Create, 48), (Operation.Close, 96), (Operation.Join, 120),
-            (Operation.Proof, 384), (Operation.Offer, 1920), (Operation.Answer, 96), (Operation.Receive, 3200) })
+            (Operation.Proof, 384), (Operation.Offer, 1920), (Operation.Answer, 96), (Operation.Receive, 3200), (Operation.Relay, 192) })
         {
             // Each accepted request comes from a distinct /48. All budgeted requests fit,
             // including new sources arriving after the old 256-source table would have filled.
@@ -190,7 +192,7 @@ internal static class ServerTests
             var context = new DefaultHttpContext { RequestAborted = timeout.Token };
             context.Connection.RemoteIpAddress = source;
             context.Request.Scheme = "https";
-            context.Request.Path = host ? "/v2/rooms/offer" : "/v2/rooms/receive";
+            context.Request.Path = host ? "/v3/rooms/offer" : "/v3/rooms/receive";
             context.Request.Method = "POST";
             context.Request.ContentType = "application/json";
             context.Request.Body = body;
@@ -303,26 +305,26 @@ internal static class ServerTests
             };
             using var client = new HttpClient(handler) { BaseAddress = new(app.Urls.Single()), Timeout = TimeSpan.FromSeconds(10) };
             client.DefaultRequestHeaders.Add("X-Forwarded-For", "192.0.2.44");
-            using var phase1 = await client.PostAsJsonAsync("/v1/rooms/join", new { number = "000000" });
-            Check(phase1.StatusCode == HttpStatusCode.NotFound, "old API rejected");
-            using var proofResponse = await client.PostAsJsonAsync("/v2/rooms/proof", new { });
+            using var phase2 = await client.PostAsJsonAsync("/v2/rooms/join", new { number = "000000" });
+            Check(phase2.StatusCode == HttpStatusCode.NotFound, "old API rejected");
+            using var proofResponse = await client.PostAsJsonAsync("/v3/rooms/proof", new { });
             var proof = (await proofResponse.Content.ReadFromJsonAsync<AddressProof>())!;
             Check(proof.Address == IPAddress.Loopback.ToString(), "proof uses socket source, ignores forwarded IP");
             var ice = new VerifiedIce(Description(new IceEndpoint(proof.Address, 3012)), [proof.Token]);
             async Task<Registration> Create()
             {
-                using var response = await client.PostAsJsonAsync("/v2/rooms/create", new { invite });
+                using var response = await client.PostAsJsonAsync("/v3/rooms/create", new { invite });
                 Check(response.StatusCode == HttpStatusCode.OK && response.Headers.CacheControl?.NoStore == true, "create over TLS");
                 return (await response.Content.ReadFromJsonAsync<Registration>())!;
             }
             async Task Close(Registration registration)
             {
-                using var response = await client.PostAsJsonAsync("/v2/rooms/close", registration);
+                using var response = await client.PostAsJsonAsync("/v3/rooms/close", registration);
                 Check(response.StatusCode == HttpStatusCode.NoContent, "idempotent close");
             }
             async Task<Claim?> Join(string number)
             {
-                using var response = await client.PostAsJsonAsync("/v2/rooms/join", new { number, offer = ice });
+                using var response = await client.PostAsJsonAsync("/v3/rooms/join", new { number, offer = ice });
                 if (response.StatusCode == HttpStatusCode.NotFound) return null;
                 Check(response.StatusCode == HttpStatusCode.OK, "join response");
                 return await response.Content.ReadFromJsonAsync<Claim>();
@@ -330,45 +332,45 @@ internal static class ServerTests
             var first = await Create();
             var second = await Create();
             await Close(first with { OwnerToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)) });
-            var poll1 = client.PostAsJsonAsync("/v2/rooms/offer", first);
-            var poll2 = client.PostAsJsonAsync("/v2/rooms/offer", first);
+            var poll1 = client.PostAsJsonAsync("/v3/rooms/offer", first);
+            var poll2 = client.PostAsJsonAsync("/v3/rooms/offer", first);
             var duplicate = await Task.WhenAny(poll1, poll2);
             using var overlap = await duplicate;
             Check(overlap.StatusCode == HttpStatusCode.NoContent && overlap.Headers.ConnectionClose == true,
                 "same owner already has a pending poll");
-            using var busy = await client.PostAsJsonAsync("/v2/rooms/offer", second);
+            using var busy = await client.PostAsJsonAsync("/v3/rooms/offer", second);
             Check(busy.StatusCode == HttpStatusCode.ServiceUnavailable && busy.Headers.ConnectionClose == true,
                 "full poll budget refuses extra poll without keeping the HTTP socket");
-            using var whileFull = await client.PostAsJsonAsync("/v2/rooms/proof", new { });
+            using var whileFull = await client.PostAsJsonAsync("/v3/rooms/proof", new { });
             Check(whileFull.StatusCode == HttpStatusCode.OK, "proof still served with all poll slots busy");
             var matches = await Task.WhenAll(Join(first.Number), Join(first.Number));
             var claim = matches.OfType<Claim>().Single();
             Check(claim.Invite == invite && RoomDirectory.ValidToken(claim.GuestToken), "one guest, original invite");
             using var unread = await (duplicate == poll1 ? poll2 : poll1);
             Check(unread.StatusCode == HttpStatusCode.OK, "join wakes original owner poll");
-            using var offer = await client.PostAsJsonAsync("/v2/rooms/offer", first);
+            using var offer = await client.PostAsJsonAsync("/v3/rooms/offer", first);
             Check(offer.StatusCode == HttpStatusCode.OK && offer.Headers.ConnectionClose == true, "owner obtains offer again");
-            using var waiting = await client.PostAsJsonAsync("/v2/rooms/receive", new { first.Number, claim.GuestToken });
+            using var waiting = await client.PostAsJsonAsync("/v3/rooms/receive", new { first.Number, claim.GuestToken });
             Check(waiting.StatusCode == HttpStatusCode.NoContent && waiting.Headers.ConnectionClose == true,
                 "empty answer poll finishes within client timeout and releases connection");
-            using var answered = await client.PostAsJsonAsync("/v2/rooms/answer", new { first.Number, first.OwnerToken, ice });
+            using var answered = await client.PostAsJsonAsync("/v3/rooms/answer", new { first.Number, first.OwnerToken, ice });
             Check(answered.StatusCode == HttpStatusCode.NoContent, "owner submits answer");
-            using var receive = await client.PostAsJsonAsync("/v2/rooms/receive", new { first.Number, claim.GuestToken });
+            using var receive = await client.PostAsJsonAsync("/v3/rooms/receive", new { first.Number, claim.GuestToken });
             var received = await receive.Content.ReadFromJsonAsync<IceDescription>();
             Check(received?.Candidates.Single() == ice.Description.Candidates.Single(), "claimed guest obtains answer");
-            using var replay = await client.PostAsJsonAsync("/v2/rooms/receive", new { first.Number, claim.GuestToken });
+            using var replay = await client.PostAsJsonAsync("/v3/rooms/receive", new { first.Number, claim.GuestToken });
             Check((await replay.Content.ReadAsStringAsync()) == (await receive.Content.ReadAsStringAsync()), "repeat guest read is identical");
             await Close(second);
             await Close(second);
             Check(await Join(second.Number) == null, "owner can revoke");
-            using var old = await client.PostAsJsonAsync("/v2/rooms/create", new { invite = "T12L5." + invite[6..] });
+            using var old = await client.PostAsJsonAsync("/v3/rooms/create", new { invite = "T12L6." + invite[6..] });
             Check(old.StatusCode == HttpStatusCode.BadRequest, "old invite");
             using var oversizedBody = new StringContent(new string(' ', 4097), Encoding.UTF8, "application/json");
-            using var oversized = await client.PostAsync("/v2/rooms/join", oversizedBody);
+            using var oversized = await client.PostAsync("/v3/rooms/join", oversizedBody);
             Check(oversized.StatusCode == HttpStatusCode.RequestEntityTooLarge, "oversized body");
-            using var overrideAddress = await client.PostAsJsonAsync("/v2/rooms/create", new { invite, address = "192.0.2.44" });
+            using var overrideAddress = await client.PostAsJsonAsync("/v3/rooms/create", new { invite, address = "192.0.2.44" });
             Check(overrideAddress.StatusCode == HttpStatusCode.BadRequest, "unexpected address field");
-            using var limited = await client.PostAsJsonAsync("/v2/rooms/create", new { invite });
+            using var limited = await client.PostAsJsonAsync("/v3/rooms/create", new { invite });
             Check(limited.StatusCode == HttpStatusCode.TooManyRequests, "exhausted create budget returns 429");
         }
         finally { await app.StopAsync(); }

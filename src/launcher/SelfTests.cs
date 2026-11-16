@@ -32,6 +32,7 @@ internal static partial class SelfTests
             ExpectThrows<ArgumentException>(() => RoomIdentity.Parse("T12L3." + identity.Invite[6..]));
             ExpectThrows<ArgumentException>(() => RoomIdentity.Parse("T12L4." + identity.Invite[6..]));
             ExpectThrows<ArgumentException>(() => RoomIdentity.Parse("T12L5." + identity.Invite[6..]));
+            ExpectThrows<ArgumentException>(() => RoomIdentity.Parse("T12L6." + identity.Invite[6..]));
             passed.Add("Versioned pinned certificate invite + independent 256-bit guest capability");
 
             foreach (var build in GameBuild.Supported) Expect(GameBuild.FromHash(build.ExeHash.ToUpperInvariant()) == build, "known game identity");
@@ -66,6 +67,7 @@ internal static partial class SelfTests
             var rulesSession = RandomNumberGenerator.GetBytes(32);
             var rulesManifest = new SessionManifest(SecureChannel.ProtocolVersion, NetBridge.RulesVersion, 3, 123, Convert.ToHexString(rulesSession), expectedAssets);
             OnlineProfile.ValidateRules(rulesManifest, rulesSession);
+            ExpectThrows<IOException>(() => OnlineProfile.ValidateRules(rulesManifest with { Protocol = SecureChannel.ProtocolVersion - 1 }, rulesSession));
             ExpectThrows<IOException>(() => OnlineProfile.ValidateRules(rulesManifest with { Rules = NetBridge.RulesVersion - 1 }, rulesSession));
             ExpectThrows<IOException>(() => OnlineProfile.ValidateRules(rulesManifest with { Seed = 0 }, rulesSession));
             ExpectThrows<IOException>(() => OnlineProfile.ValidateRules(rulesManifest with { Delay = 13 }, rulesSession));
@@ -138,7 +140,7 @@ internal static partial class SelfTests
             using var wrongIdentity = RoomIdentity.Create();
             await RejectedConnection(identity, wrongIdentity.Invite, token);
             var correct = RoomIdentity.Parse(identity.Invite);
-            var wrongCapability = "T12L6." + Convert.ToBase64String(correct.CertificateHash.Concat(RandomNumberGenerator.GetBytes(32)).ToArray()).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            var wrongCapability = "T12L7." + Convert.ToBase64String(correct.CertificateHash.Concat(RandomNumberGenerator.GetBytes(32)).ToArray()).TrimEnd('=').Replace('+', '-').Replace('/', '_');
             CryptographicOperations.ZeroMemory(correct.Capability);
             await RejectedConnection(identity, wrongCapability, token);
             passed.Add("Wrong TLS certificate pin and wrong guest capability fail closed");
@@ -227,7 +229,7 @@ internal static partial class SelfTests
             using var tls = new SslStream(tcp.GetStream(), false, (_, cert, _, _) => cert != null && cert.GetRawCertData().AsSpan().SequenceEqual(identity.Certificate.RawData));
             await tls.AuthenticateAsClientAsync(new SslClientAuthenticationOptions { TargetHost = "th12coop.invalid", EnabledSslProtocols = SslProtocols.Tls13 }, token);
             var hello = new byte[40]; Encoding.ASCII.GetBytes("T12L").CopyTo(hello, 0);
-            BinaryPrimitives.WriteUInt16LittleEndian(hello.AsSpan(4), wrongVersion ? (ushort)5 : SecureChannel.ProtocolVersion); hello[6] = 2;
+            BinaryPrimitives.WriteUInt16LittleEndian(hello.AsSpan(4), wrongVersion ? (ushort)(SecureChannel.ProtocolVersion - 1) : SecureChannel.ProtocolVersion); hello[6] = 2;
             identity.Capability.CopyTo(hello, 8);
             await tls.WriteAsync(hello, token);
             if (wrongVersion) { await ExpectThrowsAsync<AuthenticationException>(async () => { using var unexpected = await accept; }); return; }

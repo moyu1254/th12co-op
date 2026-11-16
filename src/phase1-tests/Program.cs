@@ -10,18 +10,6 @@ namespace TH12Coop.Phase1Tests;
 
 internal static class Program
 {
-    private sealed class CloseCounter(HttpMessageHandler inner) : DelegatingHandler(inner)
-    {
-        private int requests;
-        internal int Requests => Volatile.Read(ref requests);
-
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
-        {
-            if (request.RequestUri?.AbsolutePath == "/v2/rooms/close") Interlocked.Increment(ref requests);
-            return base.SendAsync(request, token);
-        }
-    }
-
     private sealed class WaitingMapping : IAsyncDisposable
     {
         internal bool Opened { get; private set; }
@@ -41,13 +29,14 @@ internal static class Program
         }
     }
 
-    private sealed class Confirmation(WaitingMapping mapping)
+    private sealed class Confirmation(WaitingMapping mapping, bool relay)
     {
         private readonly TaskCompletionSource<string> host = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource<string> guest = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal async Task<bool> Compare(bool isHost, string phrase, CancellationToken token)
         {
-            if (isHost) Check(mapping.Opened && !mapping.Closed, "UDP mapping must last through confirmation");
+            if (isHost) Check(relay ? !mapping.Opened || mapping.Closed : mapping.Opened && !mapping.Closed,
+                "UDP mapping must be held only while the direct route is used");
             Check(phrase.Length != 0 && (isHost ? host : guest).TrySetResult(phrase), "Missing or duplicate confirmation");
             var other = await (isHost ? guest : host).Task.WaitAsync(token);
             Check(other == phrase, "Peer confirmation mismatch");
@@ -73,7 +62,8 @@ internal static class Program
     private static async Task<int> Main(string[] args)
     {
         (string Host, string Guest)? games = null;
-        if (args is ["--games", var host, var guest])
+        bool relayGame = args is ["--relay-games", _, _];
+        if (args is ["--games" or "--relay-games", var host, var guest])
         {
             Native.SetErrorMode(0x8003);
             games = (TestFolder(host), TestFolder(guest));
@@ -86,11 +76,13 @@ internal static class Program
         try
         {
             var url = new Uri(app.Urls.Single());
-            var closes = new CloseCounter(TestHandler(cert));
-            using var service = new RendezvousClient(url.AbsoluteUri, closes);
+            var hostRequests = new RouteProbe(TestHandler(cert));
+            var guestRequests = new RouteProbe(TestHandler(cert)) { MissingProof = relayGame };
+            using var service = new RendezvousClient(url.AbsoluteUri, hostRequests);
+            using var guestService = new RendezvousClient(url.AbsoluteUri, guestRequests);
             using var identity = RoomIdentity.Create();
             var mapping = new WaitingMapping();
-            var confirmation = new Confirmation(mapping);
+            var confirmation = new Confirmation(mapping, relayGame);
             var issued = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             if (games is { } paths)
             {
@@ -100,7 +92,7 @@ internal static class Program
                     Task<bool> Confirm(string phrase, CancellationToken ct) => confirmation.Compare(isHost, phrase, ct);
                     void Observe(LockstepPeer peer)
                     {
-                        Check(!mapping.Closed && confirmation.BothConfirmed, "Game preparation preceded confirmation or lost UDP mapping");
+                        Check(confirmation.BothConfirmed, "Game preparation preceded peer confirmation");
                         observe(peer);
                     }
                     if (isHost)
@@ -108,7 +100,7 @@ internal static class Program
                             testInstance: true, testInput: input, observe: Observe, openMapping: mapping.Open,
                             localCharacter: character);
                     else
-                        await OnlineSession.JoinNumber(paths.Guest, await issued.Task.WaitAsync(token), Confirm, status, token, service,
+                        await OnlineSession.JoinNumber(paths.Guest, await issued.Task.WaitAsync(token), Confirm, status, token, guestService,
                             testInstance: true, testInput: input, observe: Observe, localCharacter: character);
                 }
                 var result = await SelfTests.Lockstep(paths.Host, null, 60, guestGameDirectory: paths.Guest,
@@ -132,7 +124,7 @@ internal static class Program
                 try
                 {
                     if (await Task.WhenAny(accept, issued.Task) == accept) await accept;
-                    await using var transport = new NumberedTransport(service);
+                    await using var transport = new NumberedTransport(guestService);
                     using var guestPeer = await transport.Join(await issued.Task.WaitAsync(token), _ => { }, token);
                     await OnlineSession.ConfirmPeer(guestPeer, (phrase, ct) => confirmation.Compare(false, phrase, ct), token);
                     await guestPeer.Send([42], token);
@@ -146,18 +138,20 @@ internal static class Program
                     await accept.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
                 }
             }
-            Check(confirmation.BothConfirmed && mapping.Closed, "Missing waiting cleanup or peer confirmation");
-            Check(closes.Requests == 0, "An authenticated guest's claim caused another request to close the room");
+            Check(confirmation.BothConfirmed && (!mapping.Opened || mapping.Closed), "Missing cleanup or peer confirmation");
+            Check(hostRequests.Upgrades == (relayGame ? 1 : 0) && guestRequests.Upgrades == (relayGame ? 1 : 0),
+                "Unexpected relay use on the numbered path");
+            Check(hostRequests.Closes == 0, "An authenticated guest's claim caused another request to close the room");
             if (games == null)
             {
                 await CancelWaitingHost(service);
-                Check(closes.Requests == 1, "Cancelling an unclaimed room must send one close request");
+                Check(hostRequests.Closes == 1 && hostRequests.Upgrades == 0, "Cancelling an unclaimed room must close without relay");
                 using var tests = new CancellationTokenSource(TimeSpan.FromMinutes(2));
                 await Task.WhenAll(DelayedHostOfferProcessing(service, tests.Token),
-                    QuicIdentityTests.Run(tests.Token), UdpPathTests.Run(tests.Token));
+                    QuicIdentityTests.Run(tests.Token), UdpPathTests.Run(tests.Token), RelayPathTests.Run(cert, tests.Token));
             }
             Console.WriteLine(games == null ? "PASS numbered HTTPS/ICE/QUIC loopback, confirmation and cleanup" :
-                "PASS numbered loopback game, lockstep, quiet operation and cleanup");
+                $"PASS numbered {(relayGame ? "WSS relay" : "QUIC direct")} loopback game, lockstep, quiet operation and cleanup");
             return 0;
         }
         finally { await app.StopAsync(); }
@@ -227,7 +221,7 @@ internal static class Program
         Check(!mapping.Opened, "Idle room unnecessarily opened a UDP mapping");
     }
 
-    private static HttpClientHandler TestHandler(X509Certificate2 cert) => new()
+    internal static HttpClientHandler TestHandler(X509Certificate2 cert) => new()
     {
         AllowAutoRedirect = false, UseCookies = false, UseProxy = false, SslProtocols = SslProtocols.Tls13,
         ServerCertificateCustomValidationCallback = (_, peer, _, _) => peer != null && peer.RawData.AsSpan().SequenceEqual(cert.RawData)

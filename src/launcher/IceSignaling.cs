@@ -13,6 +13,11 @@ internal sealed record IceEndpoint(string Address, int Port);
 internal sealed record IceDescription(string Ufrag, string Password, IceEndpoint[] Candidates)
 {
     internal const int MaxCandidates = 4;
+    // An explicit negative result is a signaling message, never an ICE description
+    // to hand to the agent. No address, credential or proof is needed for it.
+    internal static readonly IceDescription NoDirect = new("", "", []);
+    internal bool IsNoDirect => Ufrag == "" && Password == "" && Candidates is { Length: 0 };
+    internal bool IsValidSignal(bool allowLoopback) => IsNoDirect || IsValid(allowLoopback);
 
     internal bool IsValid(bool allowLoopback) =>
         IsIceString(Ufrag, 4) && IsIceString(Password, 22) &&

@@ -18,7 +18,7 @@ internal sealed class RoomIdentity : IDisposable
         Certificate = certificate;
         Capability = capability;
         var invite = SHA256.HashData(certificate.RawData).Concat(capability).ToArray();
-        try { Invite = "T12L6." + Convert.ToBase64String(invite).TrimEnd('=').Replace('+', '-').Replace('/', '_'); }
+        try { Invite = "T12L7." + Convert.ToBase64String(invite).TrimEnd('=').Replace('+', '-').Replace('/', '_'); }
         finally { CryptographicOperations.ZeroMemory(invite); }
     }
 
@@ -42,7 +42,7 @@ internal sealed class RoomIdentity : IDisposable
     public static (byte[] CertificateHash, byte[] Capability) Parse(string code)
     {
         code = code.Trim();
-        if (code.Length != 92 || !code.StartsWith("T12L6.", StringComparison.Ordinal) ||
+        if (code.Length != 92 || !code.StartsWith("T12L7.", StringComparison.Ordinal) ||
             code.AsSpan(6).ContainsAnyExcept("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_") ||
             !"AQgw".Contains(code[^1])) throw new ArgumentException("このバージョンのルームコードを入力してください。");
         var encoded = code[6..].Replace('-', '+').Replace('_', '/');
@@ -68,7 +68,7 @@ internal sealed class RoomIdentity : IDisposable
 internal sealed class SecureChannel : IDisposable
 {
     internal const int MaximumPayload = 4096;
-    internal const ushort ProtocolVersion = 6;
+    internal const ushort ProtocolVersion = 7;
     private readonly Stream stream;
     private readonly Action release;
     private readonly Func<IOException?>? pathFailure;
@@ -80,37 +80,20 @@ internal sealed class SecureChannel : IDisposable
     private SecureChannel(Stream stream, byte[] session, string? verificationCode, Action release, Func<IOException?>? pathFailure)
     { this.stream = stream; Session = session; VerificationCode = verificationCode; this.release = release; this.pathFailure = pathFailure; }
 
-    private static void CloseTcp(SslStream? tls, TcpClient client)
-    {
-        try { tls?.Dispose(); }
-        finally { client.Dispose(); }
-    }
-
     public static async Task<SecureChannel> Connect(string host, int port, string invite, CancellationToken token, bool numbered = false)
     {
         var parsed = RoomIdentity.Parse(invite);
         var client = new TcpClient { NoDelay = true };
-        SslStream? tls = null;
         try
         {
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
             deadline.CancelAfter(TimeSpan.FromSeconds(10));
             await client.ConnectAsync(host, port, deadline.Token);
-            tls = new SslStream(client.GetStream(), false, (_, certificate, _, _) =>
-                certificate != null && CryptographicOperations.FixedTimeEquals(SHA256.HashData(certificate.GetRawCertData()), parsed.CertificateHash));
-            await tls.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
-            {
-                TargetHost = "th12coop.invalid",
-                EnabledSslProtocols = SslProtocols.Tls13,
-                AllowTlsResume = false,
-                CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
-                EncryptionPolicy = EncryptionPolicy.RequireEncryption,
-            }, deadline.Token);
-            return await AuthenticateGuest(tls, parsed.CertificateHash, parsed.Capability, numbered, deadline.Token, () => CloseTcp(tls, client));
+            return await ConnectTls(client.GetStream(), parsed.CertificateHash, parsed.Capability, numbered, deadline.Token);
         }
         catch (Exception error)
         {
-            CloseTcp(tls, client);
+            client.Dispose();
             if (error is OperationCanceledException && !token.IsCancellationRequested)
                 throw new TimeoutException("相手への接続が10秒以内に完了しませんでした。", error);
             throw;
@@ -120,32 +103,59 @@ internal sealed class SecureChannel : IDisposable
 
     public static async Task<SecureChannel> Accept(TcpClient client, RoomIdentity identity, CancellationToken token, bool numbered = false)
     {
-        SslStream? tls = null;
         try
         {
             client.NoDelay = true;
-            tls = new SslStream(client.GetStream(), false);
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
             deadline.CancelAfter(TimeSpan.FromSeconds(4));
-            await tls.AuthenticateAsServerAsync(new SslServerAuthenticationOptions
-            {
-                ServerCertificate = identity.Certificate,
-                ClientCertificateRequired = false,
-                EnabledSslProtocols = SslProtocols.Tls13,
-                AllowTlsResume = false,
-                CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
-                EncryptionPolicy = EncryptionPolicy.RequireEncryption,
-            }, deadline.Token);
-            return await AuthenticateHost(tls, identity, numbered, deadline.Token, () => CloseTcp(tls, client));
+            return await AcceptTls(client.GetStream(), identity, numbered, deadline.Token);
         }
         catch (Exception error)
         {
-            CloseTcp(tls, client);
+            client.Dispose();
             if (error is OperationCanceledException && !token.IsCancellationRequested)
                 throw new TimeoutException("接続相手の認証が4秒以内に完了しませんでした。", error);
             throw;
         }
     }
+
+    // Both a TcpClient NetworkStream (which owns its socket) and a relay stream
+    // are owned by the SslStream for the lifetime of the authenticated channel.
+    internal static async Task<SecureChannel> ConnectTls(Stream transport, byte[] pin, byte[] capability,
+        bool numbered, CancellationToken token)
+    {
+        var tls = new SslStream(transport, false, (_, cert, _, _) => cert != null &&
+            CryptographicOperations.FixedTimeEquals(SHA256.HashData(cert.GetRawCertData()), pin));
+        try
+        {
+            await tls.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
+            {
+                TargetHost = "th12coop.invalid", EnabledSslProtocols = SslProtocols.Tls13, AllowTlsResume = false,
+                CertificateRevocationCheckMode = X509RevocationMode.NoCheck, EncryptionPolicy = EncryptionPolicy.RequireEncryption
+            }, token);
+            return await AuthenticateGuest(tls, pin, capability, numbered, token, FinishTls(tls, transport));
+        }
+        catch { tls.Dispose(); throw; }
+    }
+
+    internal static async Task<SecureChannel> AcceptTls(Stream transport, RoomIdentity identity, bool numbered, CancellationToken token)
+    {
+        var tls = new SslStream(transport, false);
+        try
+        {
+            await tls.AuthenticateAsServerAsync(new SslServerAuthenticationOptions
+            {
+                ServerCertificate = identity.Certificate, ClientCertificateRequired = false,
+                EnabledSslProtocols = SslProtocols.Tls13, AllowTlsResume = false,
+                CertificateRevocationCheckMode = X509RevocationMode.NoCheck, EncryptionPolicy = EncryptionPolicy.RequireEncryption
+            }, token);
+            return await AuthenticateHost(tls, identity, numbered, token, FinishTls(tls, transport));
+        }
+        catch { tls.Dispose(); throw; }
+    }
+
+    private static Action FinishTls(SslStream tls, Stream transport) =>
+        transport is RelayStream relay ? () => relay.FinishTls(tls) : tls.Dispose;
 
     // The transport supplies an ordered encrypted stream. The guest has already pinned
     // the host certificate. The caller owns the stream until authentication succeeds.
@@ -208,11 +218,11 @@ internal sealed class SecureChannel : IDisposable
     }
 
     private static byte[] CommitNonce(byte[] pin, byte[] nonce) =>
-        SHA256.HashData([.."TH12L6 guest commitment"u8, ..pin, ..nonce]);
+        SHA256.HashData([.."TH12L7 guest commitment"u8, ..pin, ..nonce]);
 
     private static string CompareCode(byte[] pin, byte[] session, byte[] nonce)
     {
-        var digest = SHA256.HashData([.."TH12L6 peer comparison"u8, ..pin, ..session, ..nonce]);
+        var digest = SHA256.HashData([.."TH12L7 peer comparison"u8, ..pin, ..session, ..nonce]);
         return Convert.ToHexString(digest.AsSpan(0, 4)).Insert(4, "-");
     }
 

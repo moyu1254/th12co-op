@@ -12,6 +12,7 @@ internal static class UdpPathTests
     internal static async Task Run(CancellationToken token)
     {
         await TranslatedPath(token);
+        await TranslatedPath(token, blockQuic: true);
         await FilteredPeerReflexiveChecks(token);
         await WrongIcePasswords(token);
         if (Socket.OSSupportsIPv6)
@@ -48,13 +49,13 @@ internal static class UdpPathTests
             await stun.SendAsync(response.Encode(appendFingerprint: true), Internal, token);
         }
 
-        internal async Task ForwardFrom(Translation sender, bool dropFirstQuic, CancellationToken token)
+        internal async Task ForwardFrom(Translation sender, bool dropFirstQuic, CancellationToken token, bool blockQuic = false)
         {
             while (true)
             {
                 var packet = await external.ReceiveAsync(token);
                 if (!packet.RemoteEndPoint.Equals(sender.Internal)) continue;
-                if (dropFirstQuic && !DroppedInitial && packet.Buffer.Length >= 1200 && (packet.Buffer[0] & 0xc0) == 0xc0)
+                if ((blockQuic || dropFirstQuic && !DroppedInitial) && packet.Buffer.Length >= 1200 && (packet.Buffer[0] & 0xc0) == 0xc0)
                 {
                     DroppedInitial = true;
                     continue;
@@ -77,7 +78,7 @@ internal static class UdpPathTests
         }
     }
 
-    private static async Task TranslatedPath(CancellationToken token)
+    private static async Task TranslatedPath(CancellationToken token, bool blockQuic = false)
     {
         using var hostNat = new Translation();
         using var guestNat = new Translation();
@@ -98,7 +99,7 @@ internal static class UdpPathTests
         {
             Candidates = [new IceEndpoint("::1", deadPort), new IceEndpoint("127.0.0.1", deadPort), ..offer.Candidates]
         };
-        var forwarding = Task.WhenAll(hostNat.ForwardFrom(guestNat, true, ct), guestNat.ForwardFrom(hostNat, false, ct));
+        var forwarding = Task.WhenAll(hostNat.ForwardFrom(guestNat, true, ct, blockQuic), guestNat.ForwardFrom(hostNat, false, ct));
         try
         {
             var paths = await Task.WhenAll(host.ConnectAsync(WithDeadPorts(guestOffer), ct),
@@ -108,7 +109,22 @@ internal static class UdpPathTests
             using var identity = RoomIdentity.Create();
             await using var server = new IceQuicConnection();
             await using var client = new IceQuicConnection();
-            var channels = await Task.WhenAll(server.Accept(paths[0], identity, ct), client.Connect(paths[1], identity.Invite, ct));
+            var accept = server.Accept(paths[0], identity, ct);
+            var connect = client.Connect(paths[1], identity.Invite, ct);
+            if (blockQuic)
+            {
+                static async Task NoPath(Task<SecureChannel> handshake)
+                {
+                    try { using var unexpected = await handshake; }
+                    catch (DirectPathUnavailableException) { return; }
+                    throw new InvalidOperationException("An unavailable QUIC path established a channel");
+                }
+                await Task.WhenAll(NoPath(accept), NoPath(connect));
+                Check(hostNat.DroppedInitial, "No QUIC Initial reached the nominated path");
+                Console.WriteLine("PASS ICE nominated the pair but blocked QUIC selected fallback on both peers");
+                return;
+            }
+            var channels = await Task.WhenAll(accept, connect);
             using var accepted = channels[0];
             using var connected = channels[1];
             var payload = Enumerable.Range(0, 4096).Select(i => (byte)(i % 251)).ToArray();

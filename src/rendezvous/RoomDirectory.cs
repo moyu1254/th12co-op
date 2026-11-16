@@ -9,15 +9,18 @@ namespace TH12Coop.Rendezvous;
 
 internal sealed record Registration(string Number, string OwnerToken);
 internal sealed record Claim(string Invite, string GuestToken);
-internal enum Operation { Create, Join, Close, Proof, Offer, Answer, Receive }
+internal enum Operation { Create, Join, Close, Proof, Offer, Answer, Receive, Relay }
 
-internal sealed class RoomDirectory(TimeProvider clock, int pollLimit = RoomDirectory.MaxWaitingPolls)
+internal sealed class RoomDirectory(TimeProvider clock, int pollLimit = RoomDirectory.MaxWaitingPolls,
+    RelayLimits? relayLimits = null)
 {
     internal const int MaxWaitingPolls = 48;
     internal static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(10);
     internal static readonly TimeSpan AnswerRetention = TimeSpan.FromSeconds(90);
     private readonly object gate = new();
     private int waitingPolls;
+    private int activeRelays;
+    private readonly RelayLimits limits = relayLimits ?? RelayLimits.Default;
     private readonly Dictionary<string, Reservation> numbers = new();
     private readonly AdmissionWindow creates = new(4, 8, 12, 48);
     private readonly AdmissionWindow joins = new(6, 12, 24, 120);
@@ -28,6 +31,7 @@ internal sealed class RoomDirectory(TimeProvider clock, int pollLimit = RoomDire
     private readonly AdmissionWindow offerRequests = new(160, 320, 480, 1920);
     private readonly AdmissionWindow answerRequests = new(12, 24, 36, 96);
     private readonly AdmissionWindow receiveRequests = new(320, 640, 1280, 3200);
+    private readonly AdmissionWindow relayRequests = new(24, 48, 72, 192);
     private readonly Dictionary<string, (string Address, long At)> proofs = new();
 
     private sealed class Mailbox
@@ -50,6 +54,7 @@ internal sealed class RoomDirectory(TimeProvider clock, int pollLimit = RoomDire
         internal readonly byte[] Owner = owner;
         internal byte[]? Guest;
         internal long? AnsweredAt;
+        internal RelayPair? Relay;
         internal readonly Mailbox Offer = new(), Answer = new();
     }
     private sealed record Reservation(long AdmittedAt, Entry? Entry);
@@ -115,6 +120,7 @@ internal sealed class RoomDirectory(TimeProvider clock, int pollLimit = RoomDire
             Operation.Offer => offerRequests,
             Operation.Answer => answerRequests,
             Operation.Receive => receiveRequests,
+            Operation.Relay => relayRequests,
             _ => throw new ArgumentOutOfRangeException(nameof(op))
         };
         lock (gate)
@@ -135,7 +141,7 @@ internal sealed class RoomDirectory(TimeProvider clock, int pollLimit = RoomDire
     internal static bool ValidNumber([NotNullWhen(true)] string? value) => value is { Length: 6 } && value.All(char.IsAsciiDigit);
     internal static bool ValidToken([NotNullWhen(true)] string? value) => value is { Length: 64 } && value.All(char.IsAsciiHexDigitUpper);
     internal static bool ValidInvite(string? value) =>
-        value is { Length: 92 } && value.StartsWith("T12L6.", StringComparison.Ordinal)
+        value is { Length: 92 } && value.StartsWith("T12L7.", StringComparison.Ordinal)
         && value.AsSpan(6).IndexOfAnyExcept("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_") < 0
         && "AQgw".Contains(value[^1]); // 64 bytes: only the high two bits of the final character carry data.
 
@@ -158,6 +164,7 @@ internal sealed class RoomDirectory(TimeProvider clock, int pollLimit = RoomDire
     // Independent proofs for IPv4 and IPv6 permit dual-stack candidate sets.
     private bool Verified(VerifiedIce? ice, IPAddress source)
     {
+        if (ice?.Description?.IsNoDirect == true) return ice.Proofs is { Length: 0 };
         if (ice?.Description?.IsValid(IPAddress.IsLoopback(Normalize(source))) != true ||
             ice.Proofs is not { Length: > 0 and <= 2 }) return false;
         return ice.Description.Candidates.All(c => ice.Proofs.Any(p => ValidToken(p) &&
@@ -215,6 +222,27 @@ internal sealed class RoomDirectory(TimeProvider clock, int pollLimit = RoomDire
 
     internal readonly record struct Poll(HttpStatusCode Status, IceDescription? Description = null);
 
+    internal (HttpStatusCode Status, RelayPair? Pair) ReserveRelay(string number, byte[] token, bool host)
+    {
+        lock (gate)
+        {
+            var now = clock.GetTimestamp();
+            if (!numbers.TryGetValue(number, out var room) || ExpireRoom(number, room, now) ||
+                room.Entry is not { AnsweredAt: not null, Guest: { } guest } entry ||
+                !CryptographicOperations.FixedTimeEquals(token, host ? entry.Owner : guest))
+                return (HttpStatusCode.NotFound, null);
+
+            if (entry.Relay == null)
+            {
+                if (Volatile.Read(ref activeRelays) >= limits.Pairs) return (HttpStatusCode.ServiceUnavailable, null);
+                entry.Relay = new RelayPair(host, limits, clock, () => Interlocked.Decrement(ref activeRelays));
+                Interlocked.Increment(ref activeRelays);
+            }
+            else if (!entry.Relay.ReserveOther(host)) return (HttpStatusCode.NotFound, null);
+            return (HttpStatusCode.OK, entry.Relay);
+        }
+    }
+
     internal async Task<Poll> Wait(string number, byte[] token, bool host, IPAddress source, CancellationToken cancellation)
     {
         TaskCompletionSource<IceDescription?> waiter;
@@ -267,6 +295,7 @@ internal sealed class RoomDirectory(TimeProvider clock, int pollLimit = RoomDire
             RemoveExpired(clock.GetTimestamp());
             if (!numbers.TryGetValue(number, out var room) || room.Entry is not { } entry ||
                 !CryptographicOperations.FixedTimeEquals(entry.Owner, owner)) return false;
+            entry.Relay?.Stop();
             Retire(number, room);
             return true;
         }
@@ -276,6 +305,7 @@ internal sealed class RoomDirectory(TimeProvider clock, int pollLimit = RoomDire
     {
         if (room.Entry is { } entry)
         {
+            entry.Relay?.StopIfWaiting();
             entry.Offer.Waiter?.TrySetResult(null);
             entry.Answer.Waiter?.TrySetResult(null);
             CryptographicOperations.ZeroMemory(entry.Owner);
@@ -312,6 +342,7 @@ internal sealed class RoomDirectory(TimeProvider clock, int pollLimit = RoomDire
         offerRequests.Expire(now, clock);
         answerRequests.Expire(now, clock);
         receiveRequests.Expire(now, clock);
+        relayRequests.Expire(now, clock);
         creates.Expire(now, clock);
         joins.Expire(now, clock);
         closes.Expire(now, clock);

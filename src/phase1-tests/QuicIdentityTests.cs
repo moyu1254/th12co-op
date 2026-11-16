@@ -16,10 +16,10 @@ internal static class QuicIdentityTests
         using var other = RoomIdentity.Create();
         var (pin, key) = RoomIdentity.Parse(identity.Invite);
         key[0] ^= 1;
-        var wrongKey = "T12L6." + Base64Url.EncodeToString([..pin, ..key]);
+        var wrongKey = "T12L7." + Base64Url.EncodeToString([..pin, ..key]);
         CryptographicOperations.ZeroMemory(key);
-        await Rejected(identity, other.Invite, token);
-        await Rejected(identity, wrongKey, token);
+        await Rejected(identity, other.Invite, wrongPin: true, token);
+        await Rejected(identity, wrongKey, wrongPin: false, token);
         Console.WriteLine("PASS QUIC rejects substituted certificate and wrong guest capability");
         await ExercisePath(identity, expectFailure: true, token);
         await ExercisePath(identity, expectFailure: false, token);
@@ -79,7 +79,7 @@ internal static class QuicIdentityTests
         Console.WriteLine("PASS QUIC survives 47 seconds idle and delivers goodbye before a code-zero connection close");
     }
 
-    private static async Task Rejected(RoomIdentity identity, string invite, CancellationToken token)
+    private static async Task Rejected(RoomIdentity identity, string invite, bool wrongPin, CancellationToken token)
     {
         var loopback = new Uri("https://127.0.0.1");
         await using var host = await UdpIcePeer.GatherAsync(true, loopback, token);
@@ -89,18 +89,19 @@ internal static class QuicIdentityTests
         await using var guestQuic = new IceQuicConnection();
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(token);
         var accepting = hostQuic.Accept(paths[0], identity, stop.Token);
+        var connecting = guestQuic.Connect(paths[1], invite, stop.Token);
         try
         {
-            using var unexpected = await guestQuic.Connect(paths[1], invite, token);
-            throw new InvalidOperationException("Guest accepted an invalid QUIC identity");
+            using var unexpected = await (wrongPin ? connecting : accepting);
+            throw new InvalidOperationException("QUIC accepted an invalid identity");
         }
-        catch (Exception e) when (e is AuthenticationException or IOException) { }
-        finally { stop.Cancel(); }
-        try
+        catch (AuthenticationException) { } // Must never select the relay on this rejection.
+        finally
         {
-            using var unexpected = await accepting;
-            throw new InvalidOperationException("Host admitted an unauthenticated guest");
+            stop.Cancel();
+            await ((Task)Task.WhenAll(accepting, connecting)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         }
-        catch (Exception e) when (e is AuthenticationException or IOException or OperationCanceledException) { }
+        if (accepting.IsCompletedSuccessfully || connecting.IsCompletedSuccessfully)
+            throw new InvalidOperationException("An unauthenticated QUIC peer established a channel");
     }
 }

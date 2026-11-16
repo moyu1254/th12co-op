@@ -54,9 +54,12 @@ internal static class Program
     }
 
     internal static WebApplication Build(X509Certificate2 leaf, X509Certificate2Collection chain,
-        IPAddress? listenAddress, int port, TimeProvider clock, int pollLimit = RoomDirectory.MaxWaitingPolls)
+        IPAddress? listenAddress, int port, TimeProvider clock, int pollLimit = RoomDirectory.MaxWaitingPolls,
+        RelayLimits? relayLimits = null)
     {
         if (pollLimit is < 1 or > RoomDirectory.MaxWaitingPolls) throw new ArgumentOutOfRangeException(nameof(pollLimit));
+        var limits = relayLimits ?? RelayLimits.Default;
+        limits.Validate();
         // Configure only this socket. In particular, environment settings must not enable HTTP,
         // forwarded headers, request logging or the developer exception page.
         var builder = WebApplication.CreateEmptyBuilder(new() { EnvironmentName = Environments.Production });
@@ -65,6 +68,7 @@ internal static class Program
         {
             kestrel.AddServerHeader = false;
             kestrel.Limits.MaxConcurrentConnections = ConnectionLimit;
+            kestrel.Limits.MaxConcurrentUpgradedConnections = 2 * limits.Pairs;
             kestrel.Limits.MaxRequestBodySize = 4096;
             kestrel.Limits.MaxRequestLineSize = 1024;
             kestrel.Limits.MaxRequestHeadersTotalSize = 4096;
@@ -85,29 +89,37 @@ internal static class Program
             else kestrel.Listen(listenAddress, port, Secure);
         });
         var app = builder.Build();
-        var directory = new RoomDirectory(clock, pollLimit);
+        var directory = new RoomDirectory(clock, pollLimit, limits);
         var timer = clock.CreateTimer(_ => directory.RemoveExpired(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
         app.Lifetime.ApplicationStopped.Register(timer.Dispose);
-        app.Run(context => Dispatch(context, directory));
+        app.UseWebSockets();
+        app.Run(context => Dispatch(context, directory, app.Lifetime.ApplicationStopping));
         return app;
     }
 
-    internal static async Task Dispatch(HttpContext context, RoomDirectory directory)
+    internal static async Task Dispatch(HttpContext context, RoomDirectory directory, CancellationToken stopping = default)
     {
         var request = context.Request;
         var response = context.Response;
         response.Headers.CacheControl = "no-store";
-        if (!request.IsHttps || request.QueryString.HasValue || !HttpMethods.IsPost(request.Method))
+        if (!request.IsHttps || request.QueryString.HasValue)
+        { response.StatusCode = 404; return; }
+        if (request.Path.Value is "/v3/relay/host" or "/v3/relay/guest")
+        {
+            await OpenRelay(context, directory, request.Path.Value == "/v3/relay/host", stopping);
+            return;
+        }
+        if (!HttpMethods.IsPost(request.Method))
         { response.StatusCode = 404; return; }
         Operation? op = request.Path.Value switch
         {
-            "/v2/rooms/create" => Operation.Create,
-            "/v2/rooms/join" => Operation.Join,
-            "/v2/rooms/close" => Operation.Close,
-            "/v2/rooms/proof" => Operation.Proof,
-            "/v2/rooms/offer" => Operation.Offer,
-            "/v2/rooms/answer" => Operation.Answer,
-            "/v2/rooms/receive" => Operation.Receive,
+            "/v3/rooms/create" => Operation.Create,
+            "/v3/rooms/join" => Operation.Join,
+            "/v3/rooms/close" => Operation.Close,
+            "/v3/rooms/proof" => Operation.Proof,
+            "/v3/rooms/offer" => Operation.Offer,
+            "/v3/rooms/answer" => Operation.Answer,
+            "/v3/rooms/receive" => Operation.Receive,
             _ => null
         };
         if (op == null || context.Connection.RemoteIpAddress is not { } source) { response.StatusCode = 404; return; }
@@ -169,6 +181,26 @@ internal static class Program
         catch (Microsoft.AspNetCore.Http.BadHttpRequestException error) { response.StatusCode = error.StatusCode; return; }
         catch (OperationCanceledException) { context.Abort(); return; }
         response.StatusCode = 400;
+    }
+
+    private static async Task OpenRelay(HttpContext context, RoomDirectory directory, bool host, CancellationToken stopping)
+    {
+        var request = context.Request;
+        if (!HttpMethods.IsGet(request.Method) || !context.WebSockets.IsWebSocketRequest ||
+            context.Connection.RemoteIpAddress is not { } source)
+        { context.Response.StatusCode = 404; return; }
+        if (!directory.Admit(Operation.Relay, source, out _))
+        { context.Response.StatusCode = 429; return; }
+
+        var number = request.Headers["X-TH12-Room"].ToString();
+        var authorization = request.Headers.Authorization.ToString();
+        const string bearer = "Bearer ";
+        if (!RoomDirectory.ValidNumber(number) || !authorization.StartsWith(bearer, StringComparison.OrdinalIgnoreCase)
+            || !RoomDirectory.ValidToken(authorization[bearer.Length..]))
+        { context.Response.StatusCode = 404; return; }
+        var (status, pair) = directory.ReserveRelay(number, Convert.FromHexString(authorization.AsSpan(bearer.Length)), host);
+        if (pair == null) { context.Response.StatusCode = (int)status; return; }
+        await pair.Serve(context, host, stopping);
     }
 
     private static async Task PollCandidates(HttpContext context, RoomDirectory directory, Operation op,

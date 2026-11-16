@@ -13,7 +13,7 @@ internal static partial class SelfTests
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
-            Expect(request.RequestUri?.AbsolutePath == "/v2/rooms/receive" && request.Method == HttpMethod.Post,
+            Expect(request.RequestUri?.AbsolutePath == "/v3/rooms/receive" && request.Method == HttpMethod.Post,
                 "fixed rendezvous endpoint");
             var credential = await request.Content!.ReadFromJsonAsync<Dictionary<string, string>>(token);
             Expect(credential?.GetValueOrDefault("number") == "000123" &&
